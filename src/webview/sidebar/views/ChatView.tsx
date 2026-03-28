@@ -3,6 +3,7 @@ import type { MeResponse, WorkspaceHintFile } from "../../../lib/types";
 import { Profile } from "./ProfileView";
 import { requestWorkspaceHints, sendChatMessages } from "../vscodeBridge";
 import { WorkspaceGuidePanel } from "../components/WorkspaceGuidePanel";
+import { SidebarTabBar, type SidebarTabId } from "../components/SidebarTabBar";
 
 interface Message {
   id: number;
@@ -29,10 +30,11 @@ function buildWelcome(me: MeResponse, profile: Profile): string {
   if (me.user.has_resume && !skillsBlock) {
     skillsBlock = `\n\nWe saved your resume text so I can reference your background when it helps.`;
   }
-  return `Hey ${name}! I'm OnBirdie, your onboarding agent. I know you're a **${role}** — I'll tailor guidance to that.${skillsBlock}\n\nHere's what I can help you with:\n• **Onboarding guide** — expand the section above for files, employer tasks, and your checklist plan\n• **Codebase tour** — walk through what matters for your role\n• **Q&A** — ask about the repo or your tasks\n\nWhat would you like to start with?`;
+  return `Hey ${name}! I'm OnBirdie, your onboarding agent. I know you're a **${role}** — I'll tailor guidance to that.${skillsBlock}\n\nHere's what I can help you with:\n• **Guide tab** — suggested files, employer tasks, and your checklist plan\n• **Codebase tour** — walk through what matters for your role\n• **Q&A** — ask about the repo or your tasks (this chat)\n\nWhat would you like to start with?`;
 }
 
 export const ChatView: React.FC<Props> = ({ me, profile, onMeUpdated, onSignOut }) => {
+  const [activeTab, setActiveTab] = useState<SidebarTabId>("chat");
   const [messages, setMessages] = useState<Message[]>([
     { id: 0, role: "agent", text: buildWelcome(me, profile) },
   ]);
@@ -134,54 +136,64 @@ export const ChatView: React.FC<Props> = ({ me, profile, onMeUpdated, onSignOut 
         )}
       </div>
 
-      <WorkspaceGuidePanel
-        me={me}
-        hints={hints}
-        hintsNote={hintsNote}
-        onMeUpdated={onMeUpdated}
-      />
+      <SidebarTabBar active={activeTab} onChange={setActiveTab} />
 
-      <div style={styles.messages}>
-        {messages.map((msg) => (
-          <div key={msg.id} style={msg.role === "user" ? styles.userRow : styles.agentRow}>
-            <div style={msg.role === "user" ? styles.userBubble : styles.agentBubble}>
-              {formatText(msg.text)}
-            </div>
-          </div>
-        ))}
-        {isTyping && (
-          <div style={styles.agentRow}>
-            <div style={styles.agentBubble}>
-              <span style={styles.typingDots}>
-                <span>•</span>
-                <span>•</span>
-                <span>•</span>
-              </span>
-            </div>
-          </div>
-        )}
-        <div ref={bottomRef} />
-      </div>
-
-      <div style={styles.inputRow}>
-        <textarea
-          style={styles.input}
-          placeholder="Ask OnBirdie anything..."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={onKey}
-          rows={1}
-          disabled={isTyping}
-        />
-        <button
-          type="button"
-          style={styles.sendBtn}
-          onClick={send}
-          disabled={!input.trim() || isTyping}
+      {activeTab === "chat" ? (
+        <div
+          style={styles.tabPanel}
+          role="tabpanel"
+          aria-labelledby="onbirdie-tab-chat"
         >
-          ↑
-        </button>
-      </div>
+          <div style={styles.messages}>
+            {messages.map((msg) => (
+              <div key={msg.id} style={msg.role === "user" ? styles.userRow : styles.agentRow}>
+                <div style={msg.role === "user" ? styles.userBubble : styles.agentBubble}>
+                  {formatText(msg.text)}
+                </div>
+              </div>
+            ))}
+            {isTyping && (
+              <div style={styles.agentRow}>
+                <div style={styles.agentBubble}>
+                  <span style={styles.typingDots}>
+                    <span>•</span>
+                    <span>•</span>
+                    <span>•</span>
+                  </span>
+                </div>
+              </div>
+            )}
+            <div ref={bottomRef} />
+          </div>
+
+          <div style={styles.inputRow}>
+            <textarea
+              style={styles.input}
+              placeholder="Ask OnBirdie anything..."
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={onKey}
+              rows={1}
+              disabled={isTyping}
+            />
+            <button
+              type="button"
+              style={styles.sendBtn}
+              onClick={send}
+              disabled={!input.trim() || isTyping}
+            >
+              ↑
+            </button>
+          </div>
+        </div>
+      ) : (
+        <WorkspaceGuidePanel
+          me={me}
+          hints={hints}
+          hintsNote={hintsNote}
+          onMeUpdated={onMeUpdated}
+        />
+      )}
     </div>
   );
 };
@@ -245,6 +257,13 @@ const styles: Record<string, React.CSSProperties> = {
   },
   headerTitle: { fontSize: "13px", fontWeight: 700, color: "var(--vscode-foreground)" },
   headerSub: { fontSize: "11px", color: "var(--vscode-descriptionForeground)" },
+  tabPanel: {
+    flex: 1,
+    minHeight: 0,
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+  },
   messages: {
     flex: 1,
     overflowY: "auto",

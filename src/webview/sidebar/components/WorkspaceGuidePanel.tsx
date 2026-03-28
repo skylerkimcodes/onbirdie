@@ -1,7 +1,6 @@
 import React, { useMemo } from "react";
 import type { MeResponse, WorkspaceHintFile } from "../../../lib/types";
 import { openFilePath } from "../vscodeBridge";
-import { CollapsibleSection } from "./CollapsibleSection";
 import { OnboardingPlanPanel } from "./OnboardingPlanPanel";
 
 interface Props {
@@ -40,51 +39,91 @@ export const WorkspaceGuidePanel: React.FC<Props> = ({
   }, [hints, hintsNote, tasks.length, plan]);
 
   return (
-    <CollapsibleSection title="Onboarding guide" subtitle={subtitle} defaultOpen={false}>
-      {hints && hints.length > 0 && (
-        <div>
-          <div style={styles.sectionLabel}>Suggested files</div>
-          <div style={styles.chips}>
-            {hints.map((f) => (
-              <button
-                key={f.path}
-                type="button"
-                style={styles.chip}
-                onClick={() => openFilePath(f.path)}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {hints && hints.length === 0 && hintsNote && (
-        <p style={styles.note}>{hintsNote}</p>
-      )}
-
-      {tasks.length > 0 && (
-        <div>
-          <div style={styles.sectionLabel}>Employer tasks ({me.employer.name})</div>
-          <ol style={styles.taskList}>
-            {[...tasks]
-              .sort((a, b) => a.sort_order - b.sort_order)
-              .map((t) => (
-                <li key={t.id} style={styles.taskLi}>
-                  <div style={styles.taskTitle}>{t.title}</div>
-                  <div style={styles.taskDesc}>{t.description}</div>
-                </li>
+    <div style={styles.root} role="tabpanel" aria-labelledby="onbirdie-tab-guide">
+      <div style={styles.panelHeader}>
+        <div style={styles.panelTitle}>Onboarding guide</div>
+        <div style={styles.panelSubtitle}>{subtitle}</div>
+      </div>
+      <div style={styles.scroll}>
+        {hints && hints.length > 0 && (
+          <div>
+            <div style={styles.sectionLabel}>Suggested files</div>
+            <div style={styles.chips}>
+              {hints.map((f) => (
+                <button
+                  key={f.path}
+                  type="button"
+                  style={styles.chip}
+                  onClick={() => openFilePath(f.path)}
+                >
+                  {f.label}
+                </button>
               ))}
-          </ol>
-        </div>
-      )}
+            </div>
+          </div>
+        )}
 
-      <OnboardingPlanPanel me={me} onMeUpdated={onMeUpdated} embedded />
-    </CollapsibleSection>
+        {hints && hints.length === 0 && hintsNote && (
+          <p style={styles.note}>{hintsNote}</p>
+        )}
+
+        {tasks.length > 0 && (
+          <div>
+            <div style={styles.sectionLabel}>Employer tasks ({me.employer.name})</div>
+            <ol style={styles.taskList}>
+              {[...tasks]
+                .sort((a, b) => a.sort_order - b.sort_order)
+                .map((t) => (
+                  <li key={t.id} style={styles.taskLi}>
+                    <div style={styles.taskTitle}>{t.title}</div>
+                    <div style={styles.taskDesc}>{t.description}</div>
+                  </li>
+                ))}
+            </ol>
+          </div>
+        )}
+
+        <OnboardingPlanPanel me={me} onMeUpdated={onMeUpdated} embedded />
+      </div>
+    </div>
   );
 };
 
 const styles: Record<string, React.CSSProperties> = {
+  root: {
+    display: "flex",
+    flexDirection: "column",
+    flex: 1,
+    minHeight: 0,
+    overflow: "hidden",
+  },
+  panelHeader: {
+    flexShrink: 0,
+    padding: "10px 12px 8px",
+    borderBottom: "1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.08))",
+  },
+  panelTitle: {
+    fontSize: "11px",
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.06em",
+    color: "var(--vscode-foreground)",
+  },
+  panelSubtitle: {
+    fontSize: "10px",
+    color: "var(--vscode-descriptionForeground)",
+    lineHeight: 1.35,
+    marginTop: "4px",
+  },
+  scroll: {
+    flex: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    padding: "12px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "14px",
+  },
   sectionLabel: {
     fontSize: "10px",
     fontWeight: 600,
