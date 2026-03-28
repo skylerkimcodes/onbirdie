@@ -41,4 +41,5 @@ async def health() -> dict[str, str]:
 
 @app.get("/api/v1/config/public")
 async def public_config() -> dict[str, str]:
+    """Non-secret hints for clients (e.g. extension)."""
     return {"api_version": "1"}

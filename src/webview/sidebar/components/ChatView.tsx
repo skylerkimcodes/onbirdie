@@ -245,6 +245,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderBottom: "1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.1))",
     flexShrink: 0,
   },
+  headerText: { flex: 1, minWidth: 0 },
   headerIcon: { fontSize: "20px" },
   headerText: { flex: 1, minWidth: 0 },
   signOut: {
