@@ -1,7 +1,10 @@
 import React, { useState } from "react";
 
 interface Props {
+  defaultName?: string;
+  employerName?: string;
   onComplete: (profile: Profile) => void;
+  onSignOut?: () => void;
 }
 
 export interface Profile {
@@ -13,8 +16,13 @@ export interface Profile {
 const ROLES = ["Frontend Engineer", "Backend Engineer", "Full Stack Engineer", "DevOps / Infra", "Mobile Engineer", "Data Engineer", "Other"];
 const EXPERIENCE = ["< 1 year", "1–3 years", "3–5 years", "5+ years"];
 
-export const ProfileView: React.FC<Props> = ({ onComplete }) => {
-  const [name, setName] = useState("");
+export const ProfileView: React.FC<Props> = ({
+  defaultName = "",
+  employerName,
+  onComplete,
+  onSignOut,
+}) => {
+  const [name, setName] = useState(defaultName);
   const [role, setRole] = useState("");
   const [experience, setExperience] = useState("");
 
@@ -23,10 +31,19 @@ export const ProfileView: React.FC<Props> = ({ onComplete }) => {
   return (
     <div style={styles.container}>
       <div style={styles.header}>
-        <span style={styles.step}>Step 1 of 2</span>
+        <div style={styles.headerTop}>
+          <span style={styles.step}>Step 1 of 2</span>
+          {onSignOut && (
+            <button type="button" style={styles.linkBtn} onClick={onSignOut}>
+              Sign out
+            </button>
+          )}
+        </div>
         <h2 style={styles.title}>Tell us about yourself</h2>
         <p style={styles.subtitle}>
-          OnBirdie uses this to personalize your onboarding experience.
+          {employerName
+            ? `Signed in with ${employerName}. OnBirdie uses your answers to personalize onboarding.`
+            : "OnBirdie uses this to personalize your onboarding experience."}
         </p>
       </div>
 
@@ -91,6 +108,21 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: "6px",
+  },
+  headerTop: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "8px",
+  },
+  linkBtn: {
+    fontSize: "11px",
+    color: "var(--vscode-textLink-foreground)",
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    fontFamily: "var(--vscode-font-family)",
+    padding: "0",
   },
   step: {
     fontSize: "11px",

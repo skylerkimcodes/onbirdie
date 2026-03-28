@@ -9,12 +9,13 @@ interface Message {
 
 interface Props {
   profile: Profile;
+  onSignOut?: () => void;
 }
 
 const WELCOME = (name: string, role: string) =>
   `Hey ${name}! I'm OnBirdie, your onboarding agent. I know you're a ${role} — I'll tailor everything to that.\n\nHere's what I can help you with:\n• **Codebase tour** — I'll walk you through the relevant parts\n• **Task breakdown** — I'll turn your first task into steps\n• **Q&A** — ask me anything about the repo\n\nWhat would you like to start with?`;
 
-export const ChatView: React.FC<Props> = ({ profile }) => {
+export const ChatView: React.FC<Props> = ({ profile, onSignOut }) => {
   const [messages, setMessages] = useState<Message[]>([
     { id: 0, role: "agent", text: WELCOME(profile.name, profile.role) },
   ]);
@@ -60,10 +61,15 @@ export const ChatView: React.FC<Props> = ({ profile }) => {
     <div style={styles.container}>
       <div style={styles.header}>
         <span style={styles.headerIcon}>🐦</span>
-        <div>
+        <div style={styles.headerText}>
           <div style={styles.headerTitle}>OnBirdie</div>
           <div style={styles.headerSub}>{profile.role}</div>
         </div>
+        {onSignOut && (
+          <button type="button" style={styles.signOut} onClick={onSignOut}>
+            Sign out
+          </button>
+        )}
       </div>
 
       <div style={styles.messages}>
@@ -127,7 +133,17 @@ const styles: Record<string, React.CSSProperties> = {
     borderBottom: "1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.1))",
     flexShrink: 0,
   },
+  headerText: { flex: 1, minWidth: 0 },
   headerIcon: { fontSize: "20px" },
+  signOut: {
+    fontSize: "11px",
+    color: "var(--vscode-textLink-foreground)",
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    fontFamily: "var(--vscode-font-family)",
+    flexShrink: 0,
+  },
   headerTitle: { fontSize: "13px", fontWeight: 700, color: "var(--vscode-foreground)" },
   headerSub: { fontSize: "11px", color: "var(--vscode-descriptionForeground)" },
   messages: {
