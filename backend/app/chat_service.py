@@ -9,6 +9,23 @@ from app.services.lava_client import lava_forward_chat_completions, openai_messa
 
 _RESUME_CAP = 12_000
 
+import re as _re
+
+_THINK_PAIRED_RE = _re.compile(r"<think>[\s\S]*?</think>\s*", _re.IGNORECASE)
+_THINK_CLOSE_ONLY_RE = _re.compile(r"^[\s\S]*?</think>\s*", _re.IGNORECASE)
+
+
+def strip_thinking_tags(text: str) -> str:
+    """Remove reasoning blocks that models like K2/DeepSeek prepend.
+
+    Handles two formats:
+    - ``<think>…</think>`` (paired tags)
+    - Reasoning text followed by ``</think>`` with no opening tag (K2's format)
+    """
+    result = _THINK_PAIRED_RE.sub("", text)
+    result = _THINK_CLOSE_ONLY_RE.sub("", result)
+    return result.strip()
+
 
 def _k2_configured() -> bool:
     return bool(settings.k2_base_url.strip() and settings.k2_api_key.strip())
@@ -52,7 +69,7 @@ async def _chat_via_k2(
     text = result.content
     if not isinstance(text, str):
         text = str(text) if text is not None else ""
-    return text.strip() or "I did not get a response. Please try again."
+    return strip_thinking_tags(text) or "I did not get a response. Please try again."
 
 
 def llm_client_openai_compatible(*, temperature: float = 0.35) -> ChatOpenAI | None:
@@ -210,7 +227,7 @@ async def invoke_system_user(
     text = result.content
     if not isinstance(text, str):
         text = str(text) if text is not None else ""
-    return text.strip()
+    return strip_thinking_tags(text)
 
 
 async def run_chat(system_prompt: str, turns: list[ChatTurn]) -> str:
@@ -241,4 +258,4 @@ async def run_chat(system_prompt: str, turns: list[ChatTurn]) -> str:
     text = result.content
     if not isinstance(text, str):
         text = str(text) if text is not None else ""
-    return text.strip() or "I did not get a response. Please try again."
+    return strip_thinking_tags(text) or "I did not get a response. Please try again."

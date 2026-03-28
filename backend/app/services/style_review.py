@@ -17,6 +17,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from pydantic import ValidationError
 
+from app.chat_service import strip_thinking_tags
 from app.config import settings
 from app.schemas import StyleIssue, StyleReviewResponse
 from app.services.lava_client import lava_forward_chat_completions, openai_message_content
@@ -231,7 +232,8 @@ async def _complete_with_k2(*, system: str, user_block: str) -> str:
         HumanMessage(content=user_block),
     ]
     raw = await llm.ainvoke(messages)
-    return raw.content if isinstance(raw.content, str) else str(raw.content)
+    text = raw.content if isinstance(raw.content, str) else str(raw.content)
+    return strip_thinking_tags(text)
 
 
 async def _complete_with_lava_light(*, system: str, user_block: str) -> str:
@@ -266,7 +268,7 @@ async def _complete_with_lava_light(*, system: str, user_block: str) -> str:
             body=body,
             use_byok=True,
         )
-    return openai_message_content(resp)
+    return strip_thinking_tags(openai_message_content(resp))
 
 
 async def _run_model(*, system: str, user_block: str) -> StyleReviewResponse:
