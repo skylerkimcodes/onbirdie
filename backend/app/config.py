@@ -23,14 +23,25 @@ class Settings(BaseSettings):
         "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
     )
 
+    # Chat + light-tier defaults (style review uses lava_light_model when set, else chat_model)
+    chat_model: str = "gpt-4o-mini"
+    lava_light_model: str = ""
+    lava_light_provider_key: str = ""
+
     # Fallback: K2 / OpenAI-compatible, or OpenAI directly
     k2_base_url: str = ""
     k2_api_key: str = ""
+    k2_model: str = "k2-think-v2"
     openai_api_key: str = ""
     openai_base_url: str = ""
     # Used when LAVA_SECRET_KEY is set (defaults to Gemini; override if Lava upstream is OpenAI, etc.)
     lava_chat_model: str = "gemini-2.0-flash"
-    chat_model: str = "gpt-4o-mini"
+
+    # Style review: "lava_light" uses Lava + small model; "k2" uses K2 directly.
+    style_review_tier: str = "lava_light"
+
+    # Demo: use hardcoded Microsoft-style guide instead of employer.style_guide in MongoDB.
+    style_guide_use_microsoft_demo: bool = True
 
 
 settings = Settings()
