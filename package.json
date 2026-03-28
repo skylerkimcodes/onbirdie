@@ -1,0 +1,37 @@
+{
+  "name": "onbirdie",
+  "displayName": "OnBirdie",
+  "description": "Multi-agent onboarding that guides new hires into productive engineers.",
+  "version": "0.0.1",
+  "publisher": "onbirdie",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:onbirdie.welcome"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "onbirdie.welcome",
+        "title": "OnBirdie: Open welcome"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.22.0",
+    "typescript": "^5.4.0"
+  }
+}
