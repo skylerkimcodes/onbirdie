@@ -12,7 +12,7 @@ export const TourTab: React.FC<Props> = ({ userRole }) => {
   const [activeIndex, setActiveIndex] = useState(0);
   const [error, setError] = useState<string | undefined>();
 
-  useEffect(() => { void generate(); }, []);
+  useEffect(() => { void generate(); }, [userRole]);
 
   const generate = async () => {
     setStatus("loading");
@@ -113,6 +113,7 @@ export const TourTab: React.FC<Props> = ({ userRole }) => {
             style={{ ...styles.dot, ...(i === activeIndex ? styles.dotActive : {}) }}
             onClick={() => goTo(i)}
             title={steps[i].title}
+            aria-label={`Go to step ${i + 1}: ${steps[i].title}`}
           />
         ))}
       </div>
@@ -155,7 +156,12 @@ export const TourTab: React.FC<Props> = ({ userRole }) => {
       </div>
 
       {/* Restart */}
-      <button type="button" style={styles.restartBtn} onClick={() => setStatus("idle")}>
+      <button type="button" style={styles.restartBtn} onClick={() => {
+        setStatus("idle");
+        setSteps([]);
+        setError(undefined);
+        setActiveIndex(0);
+      }}>
         ↺ New tour
       </button>
     </div>

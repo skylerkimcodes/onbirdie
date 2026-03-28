@@ -7,13 +7,14 @@ import {
   generateTour,
   getAccessToken,
   loginWithCredentials,
+  parseErrorDetail,
   patchPlanStep,
   registerWithCredentials,
   saveOnboardingProfile,
   sendChat,
   signOut,
 } from "../lib/auth";
-import type { ChatApiMessage, OnboardingProfilePayload, StyleReviewResult } from "../lib/types";
+import type { ChatApiMessage, OnboardingProfilePayload } from "../lib/types";
 import { extractResumePlainText } from "../lib/resumeText";
 import { getStagedGitDiff } from "../git/stagedDiff";
 import type { StyleReviewOutcome } from "../styleReviewCore";
@@ -25,7 +26,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private _view: vscode.WebviewView | undefined;
   private _tourDecoration: vscode.TextEditorDecorationType | undefined;
 
-  constructor(private readonly _context: vscode.ExtensionContext) {}
+  constructor(
+    private readonly _context: vscode.ExtensionContext,
+    private readonly _outputChannel: vscode.OutputChannel
+  ) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     this._view = webviewView;
@@ -252,18 +256,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             }
             const res = await apiRequest("GET", "/api/v1/me/style-guide", { token });
             if (!res.ok) {
-              let detail = res.statusText;
-              try {
-                const err = (await res.json()) as { detail?: unknown };
-                if (typeof err.detail === "string") {
-                  detail = err.detail;
-                }
-              } catch {
-                /* ignore */
-              }
               wv.postMessage({
                 type: "styleGuide/result",
-                payload: { ok: false as const, error: detail },
+                payload: { ok: false as const, error: await parseErrorDetail(res) },
               });
               break;
             }
@@ -289,18 +284,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
               token,
             });
             if (!res.ok) {
-              let detail = res.statusText;
-              try {
-                const err = (await res.json()) as { detail?: unknown };
-                if (typeof err.detail === "string") {
-                  detail = err.detail;
-                }
-              } catch {
-                /* ignore */
-              }
               wv.postMessage({
                 type: "styleGuide/saveResult",
-                payload: { ok: false as const, error: detail },
+                payload: { ok: false as const, error: await parseErrorDetail(res) },
               });
               break;
             }
@@ -319,8 +305,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     await vscode.commands.executeCommand("workbench.view.extension.onbirdie");
     const outcome = await this._runStagedStyleReview();
     this._view?.webview.postMessage({ type: "styleReview/result", payload: outcome });
-    const ch = vscode.window.createOutputChannel("OnBirdie Style Review");
-    writeStyleReviewOutput(outcome, ch);
+    writeStyleReviewOutput(outcome, this._outputChannel);
   }
 
   /** Push style-review results to the sidebar webview (e.g. after automatic post-commit review). */

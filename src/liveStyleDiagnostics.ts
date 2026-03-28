@@ -41,13 +41,17 @@ function issueToDiagnostic(
     const line = doc.lineAt(lineStart - 1);
     range = new vscode.Range(lineStart - 1, 0, lineStart - 1, Math.max(line.text.length, 1));
   } else {
-    range = new vscode.Range(0, 0, 0, Math.min(80, doc.lineAt(0).text.length || 1));
+    // Without a line, stacking every issue on line 1 hides entries in Problems. Stagger by index.
+    const fallbackLine = Math.min(index, Math.max(0, doc.lineCount - 1));
+    const line = doc.lineAt(fallbackLine);
+    range = new vscode.Range(fallbackLine, 0, fallbackLine, Math.max(line.text.length, 1));
   }
 
-  const msg = `${issue.guide_quote}\n${issue.explanation}\n→ ${issue.suggestion}`;
+  const msg = `[OnBirdie style] ${issue.guide_quote}\n${issue.explanation}\n→ ${issue.suggestion}`;
   const d = new vscode.Diagnostic(range, msg, sev);
   d.source = "OnBirdie";
-  d.code = `style-${index}`;
+  // Stable code so Problems filter and hovers show a consistent category (not confused with ESLint/tsserver).
+  d.code = "style-guide";
   return d;
 }
 
@@ -58,41 +62,46 @@ export function registerLiveStyleDiagnostics(context: vscode.ExtensionContext): 
   const pending = new Map<string, NodeJS.Timeout>();
 
   const run = async (doc: vscode.TextDocument) => {
-    const cfg = vscode.workspace.getConfiguration("onbirdie");
-    if (!cfg.get<boolean>("liveStyleCheck", true)) {
-      collection.delete(doc.uri);
-      return;
-    }
-    if (doc.uri.scheme !== "file") {
-      return;
-    }
-    if (!LIVE_LANG.has(doc.languageId)) {
-      collection.delete(doc.uri);
-      return;
-    }
-    const text = doc.getText();
-    if (text.length > MAX_CHARS) {
-      collection.delete(doc.uri);
-      return;
-    }
+    try {
+      const cfg = vscode.workspace.getConfiguration("onbirdie");
+      if (!cfg.get<boolean>("liveStyleCheck", true)) {
+        collection.delete(doc.uri);
+        return;
+      }
+      if (doc.uri.scheme !== "file") {
+        return;
+      }
+      if (!LIVE_LANG.has(doc.languageId)) {
+        collection.delete(doc.uri);
+        return;
+      }
+      const text = doc.getText();
+      if (text.length > MAX_CHARS) {
+        collection.delete(doc.uri);
+        return;
+      }
 
-    const folder = vscode.workspace.getWorkspaceFolder(doc.uri);
-    const rel = folder ? vscode.workspace.asRelativePath(doc.uri, false) : doc.uri.fsPath;
+      const folder = vscode.workspace.getWorkspaceFolder(doc.uri);
+      const rel = folder ? vscode.workspace.asRelativePath(doc.uri, false) : doc.uri.fsPath;
 
-    const outcome = await runStyleReviewForFile(context.secrets, rel, text);
-    if (!outcome.ok) {
-      collection.set(doc.uri, [
-        new vscode.Diagnostic(
+      const outcome = await runStyleReviewForFile(context.secrets, rel, text);
+      if (!outcome.ok) {
+        const authHint = new vscode.Diagnostic(
           new vscode.Range(0, 0, 0, 1),
-          `OnBirdie live style: ${outcome.error}`,
+          `[OnBirdie style] ${outcome.error}`,
           vscode.DiagnosticSeverity.Information
-        ),
-      ]);
-      return;
+        );
+        authHint.source = "OnBirdie";
+        authHint.code = "style-guide-auth";
+        collection.set(doc.uri, [authHint]);
+        return;
+      }
+      const issues = outcome.result.issues.slice(0, MAX_DIAGNOSTICS);
+      const diags = issues.map((it: StyleIssue, i: number) => issueToDiagnostic(doc, it, i));
+      collection.set(doc.uri, diags);
+    } catch {
+      /* Silently ignore errors from live diagnostics to avoid noisy rejection warnings. */
     }
-    const issues = outcome.result.issues.slice(0, MAX_DIAGNOSTICS);
-    const diags = issues.map((it: StyleIssue, i: number) => issueToDiagnostic(doc, it, i));
-    collection.set(doc.uri, diags);
   };
 
   const schedule = (doc: vscode.TextDocument) => {
@@ -101,7 +110,7 @@ export function registerLiveStyleDiagnostics(context: vscode.ExtensionContext): 
     if (prev) {
       clearTimeout(prev);
     }
-    const ms = vscode.workspace.getConfiguration("onbirdie").get<number>("liveStyleDebounceMs", 1400);
+    const ms = vscode.workspace.getConfiguration("onbirdie").get<number>("liveStyleDebounceMs", 1000);
     pending.set(
       key,
       setTimeout(() => {

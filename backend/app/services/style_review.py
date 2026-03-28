@@ -23,29 +23,37 @@ logger = logging.getLogger(__name__)
 MAX_DIFF_CHARS = 120_000
 MAX_LIVE_CHARS = 100_000
 
-SYSTEM_DIFF = """You are OnBirdie's style-guide reviewer for code changes.
-You compare a git unified diff against the style guide.
+SYSTEM_DIFF = """You are OnBirdie's **code** style reviewer for git diffs.
+
+CRITICAL scope:
+- Judge **source code style only** (formatting, naming, structure, braces, spacing, patterns).
+- Do **NOT** apply documentation voice, marketing tone, "write with you", Oxford commas in prose, UI copy rules, or the Microsoft *Writing* Style Guide. If the provided style guide text does not mention it, do not flag it.
+- **guide_quote** must quote or closely paraphrase a rule that actually appears in the style guide text below in the user message. If you cannot tie a finding to that text, do not report it.
 
 Rules:
-- Only flag issues that are supported by the style guide text. Cite the guide with guide_quote (short phrase or rule name).
-- If the diff is fine or the guide does not cover the change, return an empty issues list and a brief positive summary.
-- Prefer concrete suggestions (what to change) and tie explanations to the guide so the developer remembers why.
-- severity: "error" for violations that would likely fail review; "warning" for style/consistency; "info" for optional polish.
-- Return ONLY valid JSON matching this shape (no markdown fences):
+- Only flag issues supported by the style guide text supplied in the user message.
+- If the diff is fine or the guide does not cover the change, return "issues": [] and a short positive summary.
+- Prefer concrete fixes (what to change) and tie explanation to the cited guide rule.
+- severity: "error" for likely review blockers; "warning" for consistency; "info" for optional polish.
+- Return ONLY valid JSON (no markdown fences):
 {"summary":"string","issues":[{"severity":"info|warning|error","file_path":"string or null","line_start":null,"line_hint":"string or null","guide_quote":"string","explanation":"string","suggestion":"string"}]}
-Use null for line_start in diff reviews unless you can infer a file line from context.
+Use null for line_start in diff reviews unless you can infer a line from diff context.
 """
 
-SYSTEM_LIVE = """You are OnBirdie's live style assistant. You review a single file against the style guide as the user edits.
+SYSTEM_LIVE = """You are OnBirdie's **live code** style assistant for a single file.
+
+CRITICAL scope:
+- Judge **source code** against the style guide only (indentation, spacing after keywords, naming, braces, structure).
+- Do **NOT** flag documentation voice, inclusive language in comments as a "style guide" unless the guide explicitly requires it. Do **NOT** invent rules about "you", Oxford commas, or writing tone unless they appear verbatim in the provided style guide text.
+- **guide_quote** must come from the style guide text in the user message (short quoted phrase or heading). Never cite rules that are not in that text.
 
 Rules:
-- Flag issues grounded in the style guide; cite guide_quote from the guide.
-- Prefer concrete suggestions. Tie explanations to the guide for retention.
-- severity: "error" | "warning" | "info" as appropriate.
-- For each issue, set line_start to the 1-based line number in the file content when the issue is on a specific line; otherwise null.
+- Flag issues only when they match a rule in the provided style guide (or its cross-language "spirit" section when the file is not C#).
+- Set line_start to the 1-based line number when the issue is on a specific line; otherwise null.
+- severity: "error" | "warning" | "info" as appropriate; prefer fewer, high-confidence issues over noise.
 - Return ONLY valid JSON (no markdown fences):
 {"summary":"string","issues":[{"severity":"info|warning|error","file_path":"string or null","line_start":number or null,"line_hint":"string or null","guide_quote":"string","explanation":"string","suggestion":"string"}]}
-file_path should match the path given in the user message when possible.
+file_path should match the path given in the user message.
 """
 
 
@@ -75,18 +83,40 @@ Git diff (staged changes):
 """
 
 
+def _language_hint(file_path: str) -> str:
+    lower = file_path.lower()
+    # Longer extensions first (e.g. .tsx before .ts).
+    rules: list[tuple[tuple[str, ...], str]] = [
+        ((".tsx",), "TypeScript (React)"),
+        ((".ts",), "TypeScript"),
+        ((".jsx",), "JavaScript (React)"),
+        ((".js", ".mjs", ".cjs"), "JavaScript"),
+        ((".py",), "Python"),
+        ((".cs",), "C#"),
+        ((".go",), "Go"),
+        ((".rs",), "Rust"),
+        ((".java",), "Java"),
+    ]
+    for suffixes, name in rules:
+        if lower.endswith(suffixes):
+            return name
+    return "unknown — apply cross-language rules only"
+
+
 def _build_user_block_live(style_guide: str, file_path: str, content: str) -> str:
     guide_section = (
         style_guide.strip()
         if style_guide.strip()
         else "(No style guide text. Give only generic notes as info-level issues.)"
     )
+    lang = _language_hint(file_path)
     return f"""Style guide:
 ---
 {guide_section}
 ---
 
 File path: {file_path}
+Language (for applying rules): {lang}
 
 File content (line numbers are 1-based; first line is line 1):
 ---
@@ -128,7 +158,7 @@ async def _complete_with_lava_light(*, system: str, user_block: str) -> str:
         raise RuntimeError("LAVA_SECRET_KEY is not set")
     upstream = (settings.lava_forward_upstream or "").strip()
     if not upstream:
-        upstream = "https://api.openai.com/v1/chat/completions"
+        upstream = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 
     model = (settings.lava_light_model or settings.chat_model or "gpt-4o-mini").strip()
 
@@ -145,6 +175,7 @@ async def _complete_with_lava_light(*, system: str, user_block: str) -> str:
         resp = await lava_forward_chat_completions(
             upstream_chat_completions_url=upstream,
             body=body,
+            use_byok=True,
         )
     except RuntimeError:
         logger.info("Retrying Lava light call without response_format")
@@ -152,6 +183,7 @@ async def _complete_with_lava_light(*, system: str, user_block: str) -> str:
         resp = await lava_forward_chat_completions(
             upstream_chat_completions_url=upstream,
             body=body,
+            use_byok=True,
         )
     return openai_message_content(resp)
 

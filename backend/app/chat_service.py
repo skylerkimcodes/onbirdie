@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import urllib.parse
-
-import httpx
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from app.config import settings
 from app.schemas import ChatTurn
+from app.services.lava_client import lava_forward_chat_completions, openai_message_content
 
 _RESUME_CAP = 12_000
 
@@ -37,54 +35,22 @@ def _openai_style_messages(system_prompt: str, turns: list[ChatTurn]) -> list[di
 async def _chat_via_lava(
     messages: list[dict[str, str]], *, temperature: float = 0.35
 ) -> str:
-    key = (settings.lava_secret_key or "").strip()
-    if not key:
-        raise RuntimeError("LAVA_SECRET_KEY is empty.")
-
-    base = (settings.lava_api_base_url or "https://api.lava.so/v1").strip().rstrip("/")
     upstream = (settings.lava_forward_upstream or "").strip()
     if not upstream:
         upstream = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 
-    forward_url = f"{base}/forward?u={urllib.parse.quote(upstream, safe='')}"
-    lava_model = (settings.lava_chat_model or settings.chat_model).strip() or "gemini-2.0-flash"
-    payload = {
+    lava_model = (settings.lava_chat_model or settings.chat_model).strip() or "gpt-4o-mini"
+    body = {
         "model": lava_model,
         "messages": messages,
         "temperature": temperature,
     }
-
-    async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
-        response = await client.post(
-            forward_url,
-            headers={
-                "Authorization": f"Bearer {key}",
-                "Content-Type": "application/json",
-            },
-            json=payload,
-        )
-
-    try:
-        response.raise_for_status()
-    except httpx.HTTPStatusError as e:
-        detail = response.text[:500]
-        raise RuntimeError(f"Lava request failed ({e.response.status_code}): {detail}") from e
-
-    data = response.json()
-    if isinstance(data, dict) and "data" in data and "choices" not in data:
-        inner = data.get("data")
-        if isinstance(inner, dict):
-            data = inner
-
-    choices = data.get("choices") if isinstance(data, dict) else None
-    if not choices:
-        raise RuntimeError(f"Unexpected Lava response shape: {str(data)[:400]}")
-
-    msg = choices[0].get("message") or {}
-    content = msg.get("content") if isinstance(msg, dict) else None
-    if not isinstance(content, str):
-        content = str(content) if content is not None else ""
-    return content.strip() or "I did not get a response. Please try again."
+    resp = await lava_forward_chat_completions(
+        upstream_chat_completions_url=upstream,
+        body=body,
+    )
+    content = openai_message_content(resp)
+    return content or "I did not get a response. Please try again."
 
 
 def build_system_prompt(

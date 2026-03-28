@@ -34,8 +34,8 @@ class Settings(BaseSettings):
     k2_model: str = "k2-think-v2"
     openai_api_key: str = ""
     openai_base_url: str = ""
-    # Used when LAVA_SECRET_KEY is set (defaults to Gemini; override if Lava upstream is OpenAI, etc.)
-    lava_chat_model: str = "gemini-2.0-flash"
+    # Used when LAVA_SECRET_KEY is set; falls back to chat_model when empty.
+    lava_chat_model: str = ""
 
     # Style review: "lava_light" uses Lava + small model; "k2" uses K2 directly.
     style_review_tier: str = "lava_light"

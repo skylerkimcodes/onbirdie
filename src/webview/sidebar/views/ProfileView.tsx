@@ -110,8 +110,9 @@ export const ProfileView: React.FC<Props> = ({
       </div>
 
       <div style={styles.form}>
-        <label style={styles.label}>Your name</label>
+        <label htmlFor="onbirdie-name" style={styles.label}>Your name</label>
         <input
+          id="onbirdie-name"
           style={styles.input}
           type="text"
           placeholder="e.g. Alex"
@@ -155,8 +156,9 @@ export const ProfileView: React.FC<Props> = ({
           Add <strong>either</strong> your LinkedIn URL <strong>or</strong> resume text (paste below or upload a{" "}
           <strong>PDF</strong> or text file).
         </p>
-        <label style={styles.subLabel}>LinkedIn profile URL</label>
+        <label htmlFor="onbirdie-linkedin" style={styles.subLabel}>LinkedIn profile URL</label>
         <input
+          id="onbirdie-linkedin"
           style={styles.input}
           type="url"
           placeholder="https://www.linkedin.com/in/…"

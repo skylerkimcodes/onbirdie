@@ -4,6 +4,7 @@ import type {
   MeResponse,
   OnboardingProfilePayload,
   ProfileSaveResult,
+  StyleReviewOutcome,
   TourGenerateResult,
   WorkspaceHintsResult,
 } from "../../lib/types";

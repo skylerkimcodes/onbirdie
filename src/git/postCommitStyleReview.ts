@@ -20,6 +20,7 @@ export function registerPostCommitStyleReview(
   context: vscode.ExtensionContext,
   options: {
     onResult: (outcome: StyleReviewOutcome) => void;
+    outputChannel: vscode.OutputChannel;
   }
 ): void {
   const runForRepo = async (repo: GitRepositoryMinimal) => {
@@ -35,22 +36,18 @@ export function registerPostCommitStyleReview(
     }
     const outcome = await runStyleReviewForDiff(context.secrets, diff);
     options.onResult(outcome);
-    const ch = vscode.window.createOutputChannel("OnBirdie Style Review");
-    writeStyleReviewOutput(outcome, ch);
+    writeStyleReviewOutput(outcome, options.outputChannel);
     if (outcome.ok) {
       const n = outcome.result.issues.length;
       const summary = outcome.result.summary.trim().slice(0, 100);
       if (n > 0) {
-        void vscode.window
-          .showInformationMessage(
-            `OnBirdie: ${n} style issue(s) in last commit. ${summary}`,
-            "Show output"
-          )
-          .then((sel) => {
-            if (sel === "Show output") {
-              ch.show(true);
-            }
-          });
+        const sel = await vscode.window.showInformationMessage(
+          `OnBirdie: ${n} style issue(s) in last commit. ${summary}`,
+          "Show output"
+        );
+        if (sel === "Show output") {
+          options.outputChannel.show(true);
+        }
       }
     } else {
       void vscode.window.showWarningMessage(

@@ -97,8 +97,9 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn }) => {
         </button>
       </div>
 
-      <label style={styles.label}>Work email</label>
+      <label htmlFor="onbirdie-email" style={styles.label}>Work email</label>
       <input
+        id="onbirdie-email"
         style={styles.input}
         type="email"
         autoComplete="email"
@@ -108,8 +109,9 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn }) => {
         disabled={busy}
       />
 
-      <label style={styles.label}>Password</label>
+      <label htmlFor="onbirdie-password" style={styles.label}>Password</label>
       <input
+        id="onbirdie-password"
         style={styles.input}
         type="password"
         autoComplete={mode === "login" ? "current-password" : "new-password"}
@@ -121,8 +123,9 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn }) => {
 
       {mode === "register" && (
         <>
-          <label style={styles.label}>Employer join code</label>
+          <label htmlFor="onbirdie-joincode" style={styles.label}>Employer join code</label>
           <input
+            id="onbirdie-joincode"
             style={styles.input}
             type="text"
             autoComplete="off"

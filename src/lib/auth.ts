@@ -31,7 +31,7 @@ function stringifyDetail(detail: unknown): string {
   return "Request failed";
 }
 
-async function parseErrorDetail(res: Response): Promise<string> {
+export async function parseErrorDetail(res: Response): Promise<string> {
   let detail = res.statusText;
   try {
     const err = (await res.json()) as { detail?: unknown };

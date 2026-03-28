@@ -175,19 +175,18 @@ export const ChatView: React.FC<Props> = ({ me, profile, onMeUpdated, onSignOut 
         </div>
       </div>
 
-      {(styleBusy || styleOutcome) && (
-        <div style={styles.stylePanel}>
-          {styleBusy && (
-            <p style={styles.stylePanelText}>Reading staged diff and checking the guide…</p>
-          )}
-          {styleOutcome && !styleBusy && <StyleReviewBlock outcome={styleOutcome} />}
-        </div>
-      )}
-
       <SidebarTabBar active={activeTab} onChange={setActiveTab} />
 
       {activeTab === "chat" ? (
         <div style={styles.tabPanel} role="tabpanel" aria-labelledby="onbirdie-tab-chat">
+          {(styleBusy || styleOutcome) && (
+            <div style={styles.stylePanel}>
+              {styleBusy && (
+                <p style={styles.stylePanelText}>Reading staged diff and checking the guide…</p>
+              )}
+              {styleOutcome && !styleBusy && <StyleReviewBlock outcome={styleOutcome} />}
+            </div>
+          )}
           <div style={styles.messages}>
             {messages.map((msg) => (
               <div key={msg.id} style={msg.role === "user" ? styles.userRow : styles.agentRow}>
@@ -225,6 +224,7 @@ export const ChatView: React.FC<Props> = ({ me, profile, onMeUpdated, onSignOut 
               style={styles.sendBtn}
               onClick={send}
               disabled={!input.trim() || isTyping}
+              aria-label="Send message"
             >
               ↑
             </button>

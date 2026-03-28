@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.chat_service import invoke_system_user
@@ -255,9 +255,19 @@ async def generate_tour(
 
     user_msg = role_line + "Files:\n\n" + "\n\n".join(file_blocks)
 
-    raw = await invoke_system_user(_TOUR_SYSTEM_PROMPT, user_msg)
+    try:
+        raw = await invoke_system_user(_TOUR_SYSTEM_PROMPT, user_msg)
+    except RuntimeError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e),
+        ) from e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Tour generation error: {e!s}",
+        ) from e
 
-    # Extract JSON array from response
     match = re.search(r"\[.*\]", raw, re.DOTALL)
     if not match:
         raise HTTPException(status_code=500, detail=f"LLM did not return a JSON array: {raw[:300]}")

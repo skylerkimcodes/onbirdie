@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { apiRequest } from "./lib/api";
-import { getAccessToken } from "./lib/auth";
+import { getAccessToken, parseErrorDetail } from "./lib/auth";
 import type { StyleReviewOutcome, StyleReviewResult } from "./lib/types";
 
 export type { StyleReviewOutcome };
@@ -22,16 +22,7 @@ export async function runStyleReviewForDiff(
     token,
   });
   if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const err = (await res.json()) as { detail?: unknown };
-      if (typeof err.detail === "string") {
-        detail = err.detail;
-      }
-    } catch {
-      /* ignore */
-    }
-    return { ok: false, error: detail };
+    return { ok: false, error: await parseErrorDetail(res) };
   }
   const result = (await res.json()) as StyleReviewResult;
   return { ok: true, result };
@@ -46,25 +37,15 @@ export async function runStyleReviewForFile(
   if (!token) {
     return { ok: false, error: "Sign in to OnBirdie for live style checks." };
   }
-  const trimmed = content;
-  if (!trimmed.trim()) {
+  if (!content.trim()) {
     return { ok: false, error: "Empty file." };
   }
   const res = await apiRequest("POST", "/api/v1/style-review/live", {
-    body: { file_path: filePath, content: trimmed },
+    body: { file_path: filePath, content },
     token,
   });
   if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const err = (await res.json()) as { detail?: unknown };
-      if (typeof err.detail === "string") {
-        detail = err.detail;
-      }
-    } catch {
-      /* ignore */
-    }
-    return { ok: false, error: detail };
+    return { ok: false, error: await parseErrorDetail(res) };
   }
   const result = (await res.json()) as StyleReviewResult;
   return { ok: true, result };

@@ -4,7 +4,10 @@ import { registerLiveStyleDiagnostics } from "./liveStyleDiagnostics";
 import { SidebarProvider } from "./panels/SidebarProvider";
 
 export function activate(context: vscode.ExtensionContext): void {
-  const sidebarProvider = new SidebarProvider(context);
+  const outputChannel = vscode.window.createOutputChannel("OnBirdie Style Review");
+  context.subscriptions.push(outputChannel);
+
+  const sidebarProvider = new SidebarProvider(context, outputChannel);
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(SidebarProvider.viewType, sidebarProvider)
@@ -16,6 +19,7 @@ export function activate(context: vscode.ExtensionContext): void {
   );
   registerPostCommitStyleReview(context, {
     onResult: (outcome) => sidebarProvider.notifyStyleReviewOutcome(outcome),
+    outputChannel,
   });
   registerLiveStyleDiagnostics(context);
 }
