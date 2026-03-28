@@ -4,12 +4,16 @@ const MAX_CHARS = 100_000;
 
 type PdfParseFn = (data: Buffer) => Promise<{ text?: string }>;
 
-/**
- * pdf-parse@1.x default export. v2+ pulls in pdf.js which expects DOMMatrix and
- * breaks in the VS Code extension host; v1 stays Node-safe.
- */
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse") as PdfParseFn;
+function loadPdfParse(): PdfParseFn {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require("pdf-parse") as PdfParseFn;
+  } catch {
+    throw new Error(
+      "PDF support needs the pdf-parse package. Run npm install in the OnBirdie repo root, then npm run compile."
+    );
+  }
+}
 
 function isPdfMagic(buf: Uint8Array): boolean {
   if (buf.length < 4) {
@@ -29,7 +33,7 @@ export async function extractResumePlainText(
   const asPdf = pathLower.endsWith(".pdf") || isPdfMagic(raw);
 
   if (asPdf) {
-    const data = await pdfParse(Buffer.from(raw));
+    const data = await loadPdfParse()(Buffer.from(raw));
     const text = (data.text ?? "").replace(/\s+/g, " ").trim();
     if (!text) {
       throw new Error(

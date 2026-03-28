@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { apiRequest } from "../lib/api";
 import {
   clearOnboardingPlan,
   fetchMe,
@@ -11,8 +12,11 @@ import {
   sendChat,
   signOut,
 } from "../lib/auth";
-import type { ChatApiMessage, OnboardingProfilePayload } from "../lib/types";
+import type { ChatApiMessage, OnboardingProfilePayload, StyleReviewResult } from "../lib/types";
 import { extractResumePlainText } from "../lib/resumeText";
+import { getStagedGitDiff } from "../git/stagedDiff";
+import type { StyleReviewOutcome } from "../styleReviewCore";
+import { runStyleReviewForDiff, writeStyleReviewOutput } from "../styleReviewCore";
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "onbirdie.sidebar";
@@ -22,6 +26,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   constructor(private readonly _context: vscode.ExtensionContext) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
+    this._view = webviewView;
     webviewView.webview.options = {
       enableScripts: true,
       localResourceRoots: [this._context.extensionUri],
@@ -229,11 +234,117 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             }
             break;
           }
+          case "styleReview/run": {
+            const outcome = await this._runStagedStyleReview();
+            wv.postMessage({ type: "styleReview/result", payload: outcome });
+            break;
+          }
+          case "styleGuide/get": {
+            const token = await getAccessToken(secrets);
+            if (!token) {
+              wv.postMessage({
+                type: "styleGuide/result",
+                payload: { ok: false as const, error: "Sign in first." },
+              });
+              break;
+            }
+            const res = await apiRequest("GET", "/api/v1/me/style-guide", { token });
+            if (!res.ok) {
+              let detail = res.statusText;
+              try {
+                const err = (await res.json()) as { detail?: unknown };
+                if (typeof err.detail === "string") {
+                  detail = err.detail;
+                }
+              } catch {
+                /* ignore */
+              }
+              wv.postMessage({
+                type: "styleGuide/result",
+                payload: { ok: false as const, error: detail },
+              });
+              break;
+            }
+            const data = (await res.json()) as { style_guide: string };
+            wv.postMessage({
+              type: "styleGuide/result",
+              payload: { ok: true as const, style_guide: data.style_guide ?? "" },
+            });
+            break;
+          }
+          case "styleGuide/save": {
+            const p = message.payload as { text?: string };
+            const token = await getAccessToken(secrets);
+            if (!token) {
+              wv.postMessage({
+                type: "styleGuide/saveResult",
+                payload: { ok: false as const, error: "Sign in first." },
+              });
+              break;
+            }
+            const res = await apiRequest("PUT", "/api/v1/me/style-guide", {
+              body: { style_guide: p?.text ?? "" },
+              token,
+            });
+            if (!res.ok) {
+              let detail = res.statusText;
+              try {
+                const err = (await res.json()) as { detail?: unknown };
+                if (typeof err.detail === "string") {
+                  detail = err.detail;
+                }
+              } catch {
+                /* ignore */
+              }
+              wv.postMessage({
+                type: "styleGuide/saveResult",
+                payload: { ok: false as const, error: detail },
+              });
+              break;
+            }
+            wv.postMessage({ type: "styleGuide/saveResult", payload: { ok: true as const } });
+            break;
+          }
           default:
             break;
         }
       }
     );
+  }
+
+  /** Command palette / pre-commit workflow: same review, also mirrors to Output when sidebar is closed. */
+  async runStagedStyleReviewFromCommand(): Promise<void> {
+    await vscode.commands.executeCommand("workbench.view.extension.onbirdie");
+    const outcome = await this._runStagedStyleReview();
+    this._view?.webview.postMessage({ type: "styleReview/result", payload: outcome });
+    const ch = vscode.window.createOutputChannel("OnBirdie Style Review");
+    writeStyleReviewOutput(outcome, ch);
+  }
+
+  /** Push style-review results to the sidebar webview (e.g. after automatic post-commit review). */
+  notifyStyleReviewOutcome(outcome: StyleReviewOutcome): void {
+    this._view?.webview.postMessage({ type: "styleReview/result", payload: outcome });
+  }
+
+  private async _runStagedStyleReview(): Promise<StyleReviewOutcome> {
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    if (!folder) {
+      return { ok: false, error: "Open a folder in VS Code (your git repo) first." };
+    }
+    const { diff, error: gitError } = await getStagedGitDiff(folder.uri.fsPath);
+    if (gitError) {
+      return {
+        ok: false,
+        error: `Could not read staged diff. Is this a git repository? ${gitError}`,
+      };
+    }
+    if (!diff.trim()) {
+      return {
+        ok: false,
+        error: "No staged changes. Stage files in Source Control, then run review again.",
+      };
+    }
+    return runStyleReviewForDiff(this._context.secrets, diff);
   }
 
   private _getHtml(webview: vscode.Webview): string {

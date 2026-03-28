@@ -59,6 +59,10 @@ export function requestLogout(): void {
   vscode.postMessage({ type: "auth/logout" });
 }
 
+export function requestStyleReview(): void {
+  vscode.postMessage({ type: "styleReview/run" });
+}
+
 let saveResolve: ((r: ProfileSaveResult) => void) | undefined;
 let hintsResolve: ((r: WorkspaceHintsResult) => void) | undefined;
 let chatResolve: ((r: ChatSendResult) => void) | undefined;
@@ -202,4 +206,5 @@ export type ExtensionToWebviewMessage =
       type: "auth/registerResult";
       payload: { ok: true; me: MeResponse } | { ok: false; error: string };
     }
-  | { type: "auth/logoutResult" };
+  | { type: "auth/logoutResult" }
+  | { type: "styleReview/result"; payload: StyleReviewOutcome };

@@ -11,7 +11,9 @@
     "Other"
   ],
   "activationEvents": [
-    "onView:onbirdie.sidebar"
+    "onStartupFinished",
+    "onView:onbirdie.sidebar",
+    "onCommand:onbirdie.styleReviewStaged"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -40,6 +42,23 @@
           "type": "string",
           "default": "http://127.0.0.1:8000",
           "description": "OnBirdie API base URL (no trailing slash)."
+        },
+        "onbirdie.styleReviewOnCommit": {
+          "type": "boolean",
+          "default": true,
+          "description": "After each git commit, run style review on the committed patch (requires sign-in)."
+        },
+        "onbirdie.liveStyleCheck": {
+          "type": "boolean",
+          "default": true,
+          "description": "While editing, debounce-call the style API and show findings in Problems (uses Microsoft demo guide when enabled on server)."
+        },
+        "onbirdie.liveStyleDebounceMs": {
+          "type": "number",
+          "default": 1400,
+          "minimum": 400,
+          "maximum": 60000,
+          "description": "Milliseconds to wait after typing before running a live style check."
         }
       }
     },
@@ -47,6 +66,10 @@
       {
         "command": "onbirdie.welcome",
         "title": "OnBirdie: Open welcome"
+      },
+      {
+        "command": "onbirdie.styleReviewStaged",
+        "title": "OnBirdie: Review staged changes (style guide)"
       }
     ]
   },
@@ -71,7 +94,7 @@
     "typescript": "^5.4.0"
   },
   "dependencies": {
-    "pdf-parse": "1.1.1",
+    "pdf-parse": "^1.1.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   }
