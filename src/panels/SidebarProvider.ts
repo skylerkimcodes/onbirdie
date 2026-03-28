@@ -1,36 +1,104 @@
 import * as vscode from "vscode";
+import {
+  fetchMe,
+  loginWithCredentials,
+  registerWithCredentials,
+  signOut,
+} from "../auth";
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "onbirdie.sidebar";
 
-  constructor(private readonly _extensionUri: vscode.Uri) {}
+  constructor(private readonly _context: vscode.ExtensionContext) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     webviewView.webview.options = {
       enableScripts: true,
-      localResourceRoots: [this._extensionUri],
+      localResourceRoots: [this._context.extensionUri],
     };
 
     webviewView.webview.html = this._getHtml(webviewView.webview);
 
-    // Handle messages from the webview
-    webviewView.webview.onDidReceiveMessage((message: { type: string; payload?: unknown }) => {
-      switch (message.type) {
-        case "openFile":
-          void vscode.commands.executeCommand(
-            "vscode.open",
-            vscode.Uri.file(message.payload as string)
-          );
-          break;
+    webviewView.webview.onDidReceiveMessage(
+      async (message: { type: string; payload?: unknown }) => {
+        const wv = webviewView.webview;
+        const secrets = this._context.secrets;
+
+        switch (message.type) {
+          case "auth/getSession": {
+            const me = await fetchMe(secrets);
+            wv.postMessage({ type: "auth/session", payload: { me } });
+            break;
+          }
+          case "auth/login": {
+            const p = message.payload as { email?: string; password?: string };
+            const result = await loginWithCredentials(
+              secrets,
+              p?.email ?? "",
+              p?.password ?? ""
+            );
+            if (result.ok) {
+              wv.postMessage({
+                type: "auth/loginResult",
+                payload: { ok: true as const, me: result.me },
+              });
+            } else {
+              wv.postMessage({
+                type: "auth/loginResult",
+                payload: { ok: false as const, error: result.error },
+              });
+            }
+            break;
+          }
+          case "auth/register": {
+            const p = message.payload as {
+              email?: string;
+              password?: string;
+              employerJoinCode?: string;
+            };
+            const result = await registerWithCredentials(
+              secrets,
+              p?.email ?? "",
+              p?.password ?? "",
+              p?.employerJoinCode ?? ""
+            );
+            if (result.ok) {
+              wv.postMessage({
+                type: "auth/registerResult",
+                payload: { ok: true as const, me: result.me },
+              });
+            } else {
+              wv.postMessage({
+                type: "auth/registerResult",
+                payload: { ok: false as const, error: result.error },
+              });
+            }
+            break;
+          }
+          case "auth/logout": {
+            await signOut(secrets, { silent: true });
+            wv.postMessage({ type: "auth/logoutResult" });
+            break;
+          }
+          case "openFile":
+            void vscode.commands.executeCommand(
+              "vscode.open",
+              vscode.Uri.file(message.payload as string)
+            );
+            break;
+          default:
+            break;
+        }
       }
-    });
+    );
   }
 
   private _getHtml(webview: vscode.Webview): string {
     const scriptUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this._extensionUri, "out", "webview", "sidebar.js")
+      vscode.Uri.joinPath(this._context.extensionUri, "out", "webview", "sidebar.js")
     );
     const nonce = getNonce();
+    const cspSource = webview.cspSource;
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -38,7 +106,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src * data:;" />
+    content="default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' ${cspSource}; img-src * data:;" />
   <title>OnBirdie</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }

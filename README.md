@@ -8,7 +8,7 @@ A multi-agent onboarding extension that autonomously guides new hires into becom
 |--------|------|
 | API & agents | FastAPI, LangGraph, LangChain (OpenAI-compatible client for **K2 Think V2**) |
 | Data | MongoDB Atlas + vector search (`langchain-mongodb`, Motor/PyMongo) |
-| Auth | Auth0 (API validates JWTs; the **VS Code extension** obtains tokens and calls the API) |
+| Auth | FastAPI: **bcrypt** passwords + **JWT** (HS256); users & employers in **MongoDB**; extension stores token in VS Code Secret Storage |
 | AI gateway / billing | **Lava** — FastAPI calls Lava REST with `httpx` and your secret key |
 | Client | **VS Code extension** at repo root (Webviews / UI for onboarding) |
 
@@ -25,7 +25,9 @@ python3 -m venv backend/.venv
 backend/.venv/bin/pip install -r backend/requirements.txt
 ```
 
-Run the API (once `app` exists): `backend/.venv/bin/uvicorn app.main:app --reload`
+Run the API from `backend/` (with `MONGODB_URI` and `JWT_SECRET` in `backend/.env`):
+
+`cd backend && .venv/bin/uvicorn app.main:app --reload --host 127.0.0.1 --port 8000`
 
 ## VS Code extension
 
