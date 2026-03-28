@@ -77,3 +77,24 @@ export interface ChatApiMessage {
 export type ChatSendResult =
   | { ok: true; message: string }
   | { ok: false; error: string };
+
+export interface StyleIssue {
+  severity: "info" | "warning" | "error";
+  file_path?: string | null;
+  /** 1-based line from live review when the model returns it */
+  line_start?: number | null;
+  line_hint?: string | null;
+  guide_quote: string;
+  explanation: string;
+  suggestion: string;
+}
+
+export interface StyleReviewResult {
+  summary: string;
+  issues: StyleIssue[];
+  tier_used?: "lava_light" | "k2" | null;
+}
+
+export type StyleReviewOutcome =
+  | { ok: true; result: StyleReviewResult }
+  | { ok: false; error: string };

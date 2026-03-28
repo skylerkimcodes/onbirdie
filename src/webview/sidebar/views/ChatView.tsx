@@ -1,7 +1,17 @@
 import React, { useState, useRef, useEffect } from "react";
-import type { MeResponse, WorkspaceHintFile } from "../../../lib/types";
+import type {
+  MeResponse,
+  StyleReviewOutcome,
+  WorkspaceHintFile,
+} from "../../../lib/types";
 import { Profile } from "./ProfileView";
-import { requestWorkspaceHints, sendChatMessages } from "../vscodeBridge";
+import {
+  requestStyleReview,
+  requestWorkspaceHints,
+  sendChatMessages,
+  subscribeToExtension,
+  type ExtensionToWebviewMessage,
+} from "../vscodeBridge";
 import { WorkspaceGuidePanel } from "../components/WorkspaceGuidePanel";
 import { SidebarTabBar, type SidebarTabId } from "../components/SidebarTabBar";
 
@@ -30,7 +40,7 @@ function buildWelcome(me: MeResponse, profile: Profile): string {
   if (me.user.has_resume && !skillsBlock) {
     skillsBlock = `\n\nWe saved your resume text so I can reference your background when it helps.`;
   }
-  return `Hey ${name}! I'm OnBirdie, your onboarding agent. I know you're a **${role}** — I'll tailor guidance to that.${skillsBlock}\n\nHere's what I can help you with:\n• **Guide tab** — suggested files, employer tasks, and your checklist plan\n• **Codebase tour** — walk through what matters for your role\n• **Q&A** — ask about the repo or your tasks (this chat)\n\nWhat would you like to start with?`;
+  return `Hey ${name}! I'm OnBirdie, your onboarding agent. I know you're a **${role}** — I'll tailor guidance to that.${skillsBlock}\n\nHere's what I can help you with:\n• **Guide tab** — suggested files, employer tasks, and your checklist plan\n• **Codebase tour** — walk through what matters for your role\n• **Style review** — staged changes vs your employer style guide (header button)\n• **Q&A** — ask about the repo or your tasks (this chat)\n\nWhat would you like to start with?`;
 }
 
 export const ChatView: React.FC<Props> = ({ me, profile, onMeUpdated, onSignOut }) => {
@@ -42,13 +52,24 @@ export const ChatView: React.FC<Props> = ({ me, profile, onMeUpdated, onSignOut 
   const [isTyping, setIsTyping] = useState(false);
   const [hints, setHints] = useState<WorkspaceHintFile[] | null>(null);
   const [hintsNote, setHintsNote] = useState<string | undefined>();
+  const [styleBusy, setStyleBusy] = useState(false);
+  const [styleOutcome, setStyleOutcome] = useState<StyleReviewOutcome | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const highlightKey = me.employer.highlight_paths.join("\0");
 
   useEffect(() => {
+    return subscribeToExtension((msg: ExtensionToWebviewMessage) => {
+      if (msg.type === "styleReview/result") {
+        setStyleBusy(false);
+        setStyleOutcome(msg.payload);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isTyping]);
+  }, [messages, isTyping, styleBusy, styleOutcome]);
 
   useEffect(() => {
     let cancelled = false;
@@ -121,6 +142,12 @@ export const ChatView: React.FC<Props> = ({ me, profile, onMeUpdated, onSignOut 
     }
   };
 
+  const runStyleReview = () => {
+    setStyleBusy(true);
+    setStyleOutcome(null);
+    requestStyleReview();
+  };
+
   return (
     <div style={styles.container}>
       <div style={styles.header}>
@@ -129,12 +156,32 @@ export const ChatView: React.FC<Props> = ({ me, profile, onMeUpdated, onSignOut 
           <div style={styles.headerTitle}>OnBirdie</div>
           <div style={styles.headerSub}>{profile.role}</div>
         </div>
-        {onSignOut && (
-          <button type="button" style={styles.signOut} onClick={onSignOut}>
-            Sign out
+        <div style={styles.headerActions}>
+          <button
+            type="button"
+            style={styles.styleBtn}
+            onClick={runStyleReview}
+            disabled={styleBusy}
+            title="Compare staged files to your employer style guide (git add first)"
+          >
+            {styleBusy ? "Reviewing…" : "Style review"}
           </button>
-        )}
+          {onSignOut && (
+            <button type="button" style={styles.signOut} onClick={onSignOut}>
+              Sign out
+            </button>
+          )}
+        </div>
       </div>
+
+      {(styleBusy || styleOutcome) && (
+        <div style={styles.stylePanel}>
+          {styleBusy && (
+            <p style={styles.stylePanelText}>Reading staged diff and checking the guide…</p>
+          )}
+          {styleOutcome && !styleBusy && <StyleReviewBlock outcome={styleOutcome} />}
+        </div>
+      )}
 
       <SidebarTabBar active={activeTab} onChange={setActiveTab} />
 
@@ -208,6 +255,58 @@ function formatText(text: string): React.ReactNode {
   ));
 }
 
+function severityColor(sev: string): string {
+  if (sev === "error") return "var(--vscode-errorForeground, #f14c4c)";
+  if (sev === "warning") return "var(--vscode-editorWarning-foreground, #cca700)";
+  return "var(--vscode-textLink-foreground)";
+}
+
+const StyleReviewBlock: React.FC<{ outcome: StyleReviewOutcome }> = ({ outcome }) => {
+  if (!outcome.ok) {
+    return <p style={styles.styleError}>{outcome.error}</p>;
+  }
+  const { result } = outcome;
+  return (
+    <div style={styles.styleBlockInner}>
+      <p style={styles.styleSummary}>{result.summary}</p>
+      {result.tier_used && (
+        <p style={styles.styleTier}>
+          Review tier: {result.tier_used === "lava_light" ? "light (Lava)" : "K2"}
+        </p>
+      )}
+      {result.issues.length === 0 ? (
+        <p style={styles.stylePanelMuted}>No issues reported against the style guide.</p>
+      ) : (
+        <ul style={styles.issueList}>
+          {result.issues.map((it, idx) => (
+            <li key={idx} style={styles.issueItem}>
+              <div style={styles.issueHeader}>
+                <span style={{ ...styles.issueSeverity, color: severityColor(it.severity) }}>
+                  {it.severity}
+                </span>
+                {(it.file_path || it.line_hint) && (
+                  <span style={styles.issueFile}>
+                    {[it.file_path, it.line_hint].filter(Boolean).join(" · ")}
+                  </span>
+                )}
+              </div>
+              <div style={styles.issueGuide}>
+                <span style={styles.issueGuideLabel}>From the guide: </span>
+                {it.guide_quote}
+              </div>
+              <p style={styles.issueBody}>{it.explanation}</p>
+              <p style={styles.issueSuggest}>
+                <span style={styles.issueGuideLabel}>Try: </span>
+                {it.suggestion}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
+
 function formatLine(line: string): React.ReactNode {
   const parts: React.ReactNode[] = [];
   let remaining = line;
@@ -257,6 +356,116 @@ const styles: Record<string, React.CSSProperties> = {
   },
   headerTitle: { fontSize: "13px", fontWeight: 700, color: "var(--vscode-foreground)" },
   headerSub: { fontSize: "11px", color: "var(--vscode-descriptionForeground)" },
+  headerActions: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-end",
+    gap: "4px",
+    flexShrink: 0,
+  },
+  styleBtn: {
+    fontSize: "11px",
+    fontWeight: 600,
+    color: "var(--vscode-button-secondaryForeground, var(--vscode-foreground))",
+    background: "var(--vscode-button-secondaryBackground, rgba(255,255,255,0.08))",
+    border: "1px solid var(--vscode-widget-border, rgba(255,255,255,0.12))",
+    borderRadius: "4px",
+    padding: "4px 8px",
+    cursor: "pointer",
+    fontFamily: "var(--vscode-font-family)",
+    whiteSpace: "nowrap",
+  },
+  stylePanel: {
+    flexShrink: 0,
+    maxHeight: "38vh",
+    overflowY: "auto",
+    padding: "10px 12px",
+    borderBottom: "1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.1))",
+    background: "var(--vscode-editor-background)",
+  },
+  stylePanelText: {
+    fontSize: "12px",
+    color: "var(--vscode-descriptionForeground)",
+    lineHeight: 1.5,
+  },
+  stylePanelMuted: {
+    fontSize: "11px",
+    color: "var(--vscode-descriptionForeground)",
+    marginTop: "6px",
+  },
+  styleError: {
+    fontSize: "12px",
+    color: "var(--vscode-errorForeground, #f14c4c)",
+    lineHeight: 1.5,
+  },
+  styleBlockInner: { display: "flex", flexDirection: "column", gap: "8px" },
+  styleSummary: {
+    fontSize: "12px",
+    fontWeight: 600,
+    color: "var(--vscode-foreground)",
+    lineHeight: 1.5,
+  },
+  styleTier: {
+    fontSize: "10px",
+    color: "var(--vscode-descriptionForeground)",
+    marginTop: "2px",
+  },
+  issueList: {
+    listStyle: "none",
+    margin: 0,
+    padding: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+  },
+  issueItem: {
+    border: "1px solid var(--vscode-widget-border, rgba(255,255,255,0.1))",
+    borderRadius: "8px",
+    padding: "8px 10px",
+    background: "var(--vscode-sideBar-background)",
+  },
+  issueHeader: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: "8px",
+    marginBottom: "4px",
+  },
+  issueSeverity: {
+    fontSize: "10px",
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.06em",
+  },
+  issueFile: {
+    fontSize: "10px",
+    color: "var(--vscode-descriptionForeground)",
+    fontFamily: "var(--vscode-editor-font-family, monospace)",
+  },
+  issueGuide: {
+    fontSize: "11px",
+    color: "var(--vscode-textPreformat-foreground, var(--vscode-foreground))",
+    fontStyle: "italic",
+    lineHeight: 1.45,
+    marginBottom: "4px",
+  },
+  issueGuideLabel: {
+    fontStyle: "normal",
+    fontWeight: 600,
+    color: "var(--vscode-descriptionForeground)",
+  },
+  issueBody: {
+    fontSize: "11px",
+    color: "var(--vscode-foreground)",
+    lineHeight: 1.5,
+    margin: 0,
+  },
+  issueSuggest: {
+    fontSize: "11px",
+    color: "var(--vscode-foreground)",
+    lineHeight: 1.5,
+    margin: "6px 0 0 0",
+  },
   tabPanel: {
     flex: 1,
     minHeight: 0,

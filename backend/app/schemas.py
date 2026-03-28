@@ -105,3 +105,44 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     message: str
+
+
+class StyleReviewRequest(BaseModel):
+    """Staged diff text from the client (`git diff --cached`)."""
+
+    diff: str = Field(min_length=1, max_length=250_000)
+
+
+class StyleLiveRequest(BaseModel):
+    """Current file snapshot for live editor checks."""
+
+    file_path: str = Field(min_length=1, max_length=2000)
+    content: str = Field(min_length=1, max_length=120_000)
+
+
+class StyleIssue(BaseModel):
+    severity: Literal["info", "warning", "error"] = "warning"
+    file_path: str | None = None
+    line_start: int | None = Field(
+        default=None,
+        description="1-based line number in the file (live review); omit if unknown",
+    )
+    line_hint: str | None = Field(
+        default=None,
+        description="Line or hunk the issue refers to, if known from the diff",
+    )
+    guide_quote: str = Field(
+        ...,
+        description="Short verbatim or paraphrased rule from the company style guide",
+    )
+    explanation: str
+    suggestion: str
+
+
+class StyleReviewResponse(BaseModel):
+    summary: str
+    issues: list[StyleIssue] = Field(default_factory=list)
+    tier_used: Literal["lava_light", "k2"] | None = Field(
+        default=None,
+        description="Which backend ran the review (for cost / routing visibility)",
+    )
