@@ -1,14 +1,17 @@
 import * as vscode from "vscode";
 import {
+  clearOnboardingPlan,
   fetchMe,
+  generateOnboardingPlan,
   loginWithCredentials,
+  patchPlanStep,
   registerWithCredentials,
   saveOnboardingProfile,
   sendChat,
   signOut,
-} from "../auth";
-import type { ChatApiMessage, OnboardingProfilePayload } from "../types";
-import { extractResumePlainText } from "../resumeText";
+} from "../lib/auth";
+import type { ChatApiMessage, OnboardingProfilePayload } from "../lib/types";
+import { extractResumePlainText } from "../lib/resumeText";
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "onbirdie.sidebar";
@@ -126,6 +129,29 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             const msgs = p?.messages ?? [];
             const result = await sendChat(secrets, msgs);
             wv.postMessage({ type: "chat/result", payload: result });
+            break;
+          }
+          case "plan/generate": {
+            const p = message.payload as { focus_task_id?: string };
+            const result = await generateOnboardingPlan(secrets, {
+              focus_task_id: p?.focus_task_id,
+            });
+            wv.postMessage({ type: "plan/mutResult", payload: result });
+            break;
+          }
+          case "plan/step": {
+            const p = message.payload as { step_id?: string; done?: boolean };
+            const result = await patchPlanStep(
+              secrets,
+              p?.step_id ?? "",
+              Boolean(p?.done)
+            );
+            wv.postMessage({ type: "plan/mutResult", payload: result });
+            break;
+          }
+          case "plan/clear": {
+            const result = await clearOnboardingPlan(secrets);
+            wv.postMessage({ type: "plan/mutResult", payload: result });
             break;
           }
           case "workspace/getHints": {

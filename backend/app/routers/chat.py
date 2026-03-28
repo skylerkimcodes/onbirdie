@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.chat_service import build_system_prompt, run_chat
 from app.db import get_db
 from app.deps import get_current_user_id
+from app.sample_tasks import resolve_onboarding_tasks
 from app.schemas import ChatRequest, ChatResponse
 
 router = APIRouter(tags=["chat"])
@@ -36,7 +37,10 @@ async def chat(
             detail="Employer record missing",
         )
 
-    system_prompt = build_system_prompt(user, employer)
+    onboarding_tasks = resolve_onboarding_tasks(employer, user.get("employee_role"))
+    system_prompt = build_system_prompt(
+        user, employer, onboarding_tasks=onboarding_tasks
+    )
     try:
         reply = await run_chat(system_prompt, body.messages)
     except RuntimeError as e:

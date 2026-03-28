@@ -12,14 +12,14 @@ from app.schemas import ChatTurn
 _RESUME_CAP = 12_000
 
 
-def llm_client_openai_compatible() -> ChatOpenAI | None:
+def llm_client_openai_compatible(*, temperature: float = 0.35) -> ChatOpenAI | None:
     key = (settings.k2_api_key or settings.openai_api_key or "").strip()
     if not key:
         return None
     base = (settings.k2_base_url or settings.openai_base_url or "").strip().rstrip("/")
     kwargs: dict = {
         "model": settings.chat_model.strip() or "gpt-4o-mini",
-        "temperature": 0.35,
+        "temperature": temperature,
         "api_key": key,
     }
     if base:
@@ -34,7 +34,9 @@ def _openai_style_messages(system_prompt: str, turns: list[ChatTurn]) -> list[di
     return out
 
 
-async def _chat_via_lava(messages: list[dict[str, str]]) -> str:
+async def _chat_via_lava(
+    messages: list[dict[str, str]], *, temperature: float = 0.35
+) -> str:
     key = (settings.lava_secret_key or "").strip()
     if not key:
         raise RuntimeError("LAVA_SECRET_KEY is empty.")
@@ -48,7 +50,7 @@ async def _chat_via_lava(messages: list[dict[str, str]]) -> str:
     payload = {
         "model": settings.chat_model.strip() or "gpt-4o-mini",
         "messages": messages,
-        "temperature": 0.35,
+        "temperature": temperature,
     }
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
@@ -84,13 +86,19 @@ async def _chat_via_lava(messages: list[dict[str, str]]) -> str:
     return content.strip() or "I did not get a response. Please try again."
 
 
-def build_system_prompt(user: dict, employer: dict) -> str:
+def build_system_prompt(
+    user: dict,
+    employer: dict,
+    *,
+    onboarding_tasks: list[dict] | None = None,
+) -> str:
     lines = [
         "You are OnBirdie, a concise onboarding assistant for software engineers working inside VS Code.",
         "Use short Markdown when it helps: bullets, **bold** for emphasis, no walls of text.",
         "You explain the codebase onboarding process, break down first tasks, and answer questions.",
         "When the user asks about their resume, LinkedIn, skills, or background, use the employee context below.",
         "If you lack information, say so and suggest what they could add to their profile.",
+        "Refer to the employer's onboarding tasks when helping them plan work or prioritize.",
         "",
         "Employee context:",
     ]
@@ -122,7 +130,68 @@ def build_system_prompt(user: dict, employer: dict) -> str:
     else:
         lines.append("No resume text on file (user may have only provided LinkedIn).")
 
+    tasks = onboarding_tasks or []
+    lines.append("")
+    if tasks:
+        lines.append("Employer onboarding tasks for this role (use these to suggest next steps):")
+        for t in sorted(tasks, key=lambda x: int(x.get("sort_order", 0))):
+            tid = (t.get("id") or "").strip()
+            title = (t.get("title") or "").strip()
+            desc = (t.get("description") or "").strip()
+            prefix = f"[{tid}] " if tid else ""
+            lines.append(f"- {prefix}{title}: {desc}")
+    else:
+        lines.append("No specific onboarding tasks are listed for this role yet.")
+
+    plan_raw = user.get("onboarding_plan")
+    lines.append("")
+    if isinstance(plan_raw, dict):
+        psteps = plan_raw.get("steps")
+        if isinstance(psteps, list) and psteps:
+            lines.append("Employee onboarding plan progress (reference when coaching):")
+            for ps in psteps:
+                if not isinstance(ps, dict):
+                    continue
+                pid = (ps.get("id") or "").strip()
+                ptitle = (ps.get("title") or "").strip()
+                done = bool(ps.get("done"))
+                mark = "done" if done else "todo"
+                lines.append(f"- [{mark}] {pid}: {ptitle}")
+        else:
+            lines.append("No saved onboarding plan yet — offer to help them build a step-by-step plan.")
+    else:
+        lines.append("No saved onboarding plan yet — offer to help them build a step-by-step plan.")
+
     return "\n".join(lines)
+
+
+async def invoke_system_user(
+    system: str, user: str, *, temperature: float = 0.25
+) -> str:
+    """Single-turn LLM call (used for JSON plan generation, etc.)."""
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
+    ]
+    if (settings.lava_secret_key or "").strip():
+        return await _chat_via_lava(messages, temperature=temperature)
+
+    llm = llm_client_openai_compatible(temperature=temperature)
+    if llm is None:
+        raise RuntimeError(
+            "LLM is not configured. Set LAVA_SECRET_KEY (recommended), or K2_API_KEY / OPENAI_API_KEY "
+            "in backend/.env."
+        )
+    result = await llm.ainvoke(
+        [
+            SystemMessage(content=system),
+            HumanMessage(content=user),
+        ]
+    )
+    text = result.content
+    if not isinstance(text, str):
+        text = str(text) if text is not None else ""
+    return text.strip()
 
 
 async def run_chat(system_prompt: str, turns: list[ChatTurn]) -> str:
@@ -131,7 +200,7 @@ async def run_chat(system_prompt: str, turns: list[ChatTurn]) -> str:
     if (settings.lava_secret_key or "").strip():
         return await _chat_via_lava(oa_messages)
 
-    llm = llm_client_openai_compatible()
+    llm = llm_client_openai_compatible(temperature=0.35)
     if llm is None:
         raise RuntimeError(
             "LLM is not configured. Set LAVA_SECRET_KEY (recommended), or K2_API_KEY / OPENAI_API_KEY "

@@ -95,7 +95,6 @@ export const ProfileView: React.FC<Props> = ({
       <div style={styles.header}>
         <div style={styles.headerTop}>
           <span style={styles.step}>Your profile</span>
-          <span style={styles.step}>Step 1 of 2</span>
           {onSignOut && (
             <button type="button" style={styles.linkBtn} onClick={onSignOut}>
               Sign out

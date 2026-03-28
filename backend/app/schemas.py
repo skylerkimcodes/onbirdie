@@ -29,6 +29,13 @@ class EmployerPublic(BaseModel):
     highlight_paths: list[str] = Field(default_factory=list)
 
 
+class OnboardingTaskPublic(BaseModel):
+    id: str
+    title: str
+    description: str
+    sort_order: int = 0
+
+
 class UserPublic(BaseModel):
     id: str
     email: str
@@ -42,9 +49,34 @@ class UserPublic(BaseModel):
     skills_summary: Optional[str] = None
 
 
+class PlanStepPublic(BaseModel):
+    id: str
+    title: str
+    detail: str
+    guidance: str = ""
+    done: bool = False
+
+
+class OnboardingPlanPublic(BaseModel):
+    focus_task_id: Optional[str] = None
+    steps: list[PlanStepPublic] = Field(default_factory=list)
+    updated_at: Optional[str] = None
+
+
 class MeResponse(BaseModel):
     user: UserPublic
     employer: EmployerPublic
+    onboarding_tasks: list[OnboardingTaskPublic] = Field(default_factory=list)
+    onboarding_plan: Optional[OnboardingPlanPublic] = None
+
+
+class GeneratePlanBody(BaseModel):
+    focus_task_id: Optional[str] = Field(default=None, max_length=200)
+
+
+class PlanStepPatchBody(BaseModel):
+    step_id: str = Field(min_length=1, max_length=200)
+    done: bool
 
 
 class OnboardingProfileBody(BaseModel):

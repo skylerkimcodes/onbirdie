@@ -169,3 +169,67 @@ export async function sendChat(
   const data = (await res.json()) as { message: string };
   return { ok: true, message: data.message };
 }
+
+export async function generateOnboardingPlan(
+  secrets: vscode.SecretStorage,
+  body: { focus_task_id?: string }
+): Promise<ProfileSaveResult> {
+  const token = await getAccessToken(secrets);
+  if (!token) {
+    return { ok: false, error: "Not signed in." };
+  }
+  const res = await apiRequest("POST", "/api/v1/plan/generate", {
+    token,
+    body: { focus_task_id: body.focus_task_id?.trim() || undefined },
+  });
+  if (res.status === 401) {
+    await setAccessToken(secrets, undefined);
+    return { ok: false, error: "Session expired. Sign in again." };
+  }
+  if (!res.ok) {
+    return { ok: false, error: await parseErrorDetail(res) };
+  }
+  const me = (await res.json()) as MeResponse;
+  return { ok: true, me };
+}
+
+export async function patchPlanStep(
+  secrets: vscode.SecretStorage,
+  stepId: string,
+  done: boolean
+): Promise<ProfileSaveResult> {
+  const token = await getAccessToken(secrets);
+  if (!token) {
+    return { ok: false, error: "Not signed in." };
+  }
+  const res = await apiRequest("PATCH", "/api/v1/plan/step", {
+    token,
+    body: { step_id: stepId, done },
+  });
+  if (res.status === 401) {
+    await setAccessToken(secrets, undefined);
+    return { ok: false, error: "Session expired. Sign in again." };
+  }
+  if (!res.ok) {
+    return { ok: false, error: await parseErrorDetail(res) };
+  }
+  const me = (await res.json()) as MeResponse;
+  return { ok: true, me };
+}
+
+export async function clearOnboardingPlan(secrets: vscode.SecretStorage): Promise<ProfileSaveResult> {
+  const token = await getAccessToken(secrets);
+  if (!token) {
+    return { ok: false, error: "Not signed in." };
+  }
+  const res = await apiRequest("DELETE", "/api/v1/plan", { token });
+  if (res.status === 401) {
+    await setAccessToken(secrets, undefined);
+    return { ok: false, error: "Session expired. Sign in again." };
+  }
+  if (!res.ok) {
+    return { ok: false, error: await parseErrorDetail(res) };
+  }
+  const me = (await res.json()) as MeResponse;
+  return { ok: true, me };
+}

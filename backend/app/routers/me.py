@@ -7,7 +7,16 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.db import get_db
 from app.deps import get_current_user_id
 from app.onboarding_defaults import DEFAULT_HIGHLIGHT_PATHS, DEFAULT_ROLE_OPTIONS
-from app.schemas import EmployerPublic, MeResponse, OnboardingProfileBody, UserPublic
+from app.sample_tasks import resolve_onboarding_tasks
+from app.schemas import (
+    EmployerPublic,
+    MeResponse,
+    OnboardingPlanPublic,
+    OnboardingProfileBody,
+    OnboardingTaskPublic,
+    PlanStepPublic,
+    UserPublic,
+)
 
 router = APIRouter(tags=["me"])
 
@@ -25,6 +34,52 @@ def _employer_public(emp: dict) -> EmployerPublic:
         slug=emp["slug"],
         role_options=[str(x) for x in ro],
         highlight_paths=[str(x) for x in hp],
+    )
+
+
+def _onboarding_plan_public(user: dict) -> OnboardingPlanPublic | None:
+    raw = user.get("onboarding_plan")
+    if not raw or not isinstance(raw, dict):
+        return None
+    steps_in = raw.get("steps")
+    if not isinstance(steps_in, list) or not steps_in:
+        return None
+    steps: list[PlanStepPublic] = []
+    for s in steps_in:
+        if not isinstance(s, dict):
+            continue
+        sid = str(s.get("id") or "").strip()
+        title = str(s.get("title") or "").strip()
+        detail = str(s.get("detail") or "").strip()
+        if not sid or not title or not detail:
+            continue
+        steps.append(
+            PlanStepPublic(
+                id=sid,
+                title=title,
+                detail=detail,
+                guidance=str(s.get("guidance") or "")[:500],
+                done=bool(s.get("done")),
+            )
+        )
+    if not steps:
+        return None
+    fid = raw.get("focus_task_id")
+    return OnboardingPlanPublic(
+        focus_task_id=str(fid).strip() if fid else None,
+        steps=steps,
+        updated_at=str(raw["updated_at"]) if raw.get("updated_at") else None,
+    )
+
+
+def _me_response(user: dict, employer: dict) -> MeResponse:
+    task_dicts = resolve_onboarding_tasks(employer, user.get("employee_role"))
+    tasks = [OnboardingTaskPublic(**d) for d in task_dicts]
+    return MeResponse(
+        user=_user_public(user),
+        employer=_employer_public(employer),
+        onboarding_tasks=tasks,
+        onboarding_plan=_onboarding_plan_public(user),
     )
 
 
@@ -67,10 +122,7 @@ async def me(user_id: str = Depends(get_current_user_id)) -> MeResponse:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Employer record missing",
         )
-    return MeResponse(
-        user=_user_public(user),
-        employer=_employer_public(employer),
-    )
+    return _me_response(user, employer)
 
 
 @router.patch("/me/profile", response_model=MeResponse)
@@ -111,7 +163,4 @@ async def patch_profile(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Employer record missing",
         )
-    return MeResponse(
-        user=_user_public(user),
-        employer=_employer_public(employer),
-    )
+    return _me_response(user, employer)

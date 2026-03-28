@@ -5,7 +5,7 @@ import type {
   OnboardingProfilePayload,
   ProfileSaveResult,
   WorkspaceHintsResult,
-} from "../../types";
+} from "../../lib/types";
 
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void;
@@ -61,6 +61,7 @@ export function requestLogout(): void {
 let saveResolve: ((r: ProfileSaveResult) => void) | undefined;
 let hintsResolve: ((r: WorkspaceHintsResult) => void) | undefined;
 let chatResolve: ((r: ChatSendResult) => void) | undefined;
+let planMutResolve: ((r: ProfileSaveResult) => void) | undefined;
 export type ResumePickResult =
   | { text: string }
   | { cancelled: true }
@@ -88,6 +89,11 @@ if (typeof window !== "undefined") {
       const fn = chatResolve;
       chatResolve = undefined;
       fn(data.payload as ChatSendResult);
+    }
+    if (data.type === "plan/mutResult" && planMutResolve) {
+      const fn = planMutResolve;
+      planMutResolve = undefined;
+      fn(data.payload as ProfileSaveResult);
     }
     if (data.type === "profile/resumePicked" && resumeResolve) {
       const fn = resumeResolve;
@@ -124,6 +130,30 @@ export function sendChatMessages(messages: ChatApiMessage[]): Promise<ChatSendRe
   return new Promise((resolve) => {
     chatResolve = resolve;
     vscode.postMessage({ type: "chat/send", payload: { messages } });
+  });
+}
+
+export function requestPlanGenerate(focusTaskId?: string): Promise<ProfileSaveResult> {
+  return new Promise((resolve) => {
+    planMutResolve = resolve;
+    vscode.postMessage({
+      type: "plan/generate",
+      payload: { focus_task_id: focusTaskId ?? "" },
+    });
+  });
+}
+
+export function requestPlanStep(stepId: string, done: boolean): Promise<ProfileSaveResult> {
+  return new Promise((resolve) => {
+    planMutResolve = resolve;
+    vscode.postMessage({ type: "plan/step", payload: { step_id: stepId, done } });
+  });
+}
+
+export function requestPlanClear(): Promise<ProfileSaveResult> {
+  return new Promise((resolve) => {
+    planMutResolve = resolve;
+    vscode.postMessage({ type: "plan/clear" });
   });
 }
 

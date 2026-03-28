@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import type { MeResponse } from "../../../types";
+import type { MeResponse } from "../../../lib/types";
 import {
   requestLogin,
   requestRegister,

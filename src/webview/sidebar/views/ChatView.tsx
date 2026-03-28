@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
-import type { MeResponse, WorkspaceHintFile } from "../../../types";
+import type { MeResponse, WorkspaceHintFile } from "../../../lib/types";
 import { Profile } from "./ProfileView";
-import { openFilePath, requestWorkspaceHints, sendChatMessages } from "../vscodeBridge";
+import { requestWorkspaceHints, sendChatMessages } from "../vscodeBridge";
+import { WorkspaceGuidePanel } from "../components/WorkspaceGuidePanel";
 
 interface Message {
   id: number;
@@ -12,6 +13,7 @@ interface Message {
 interface Props {
   me: MeResponse;
   profile: Profile;
+  onMeUpdated: (me: MeResponse) => void;
   onSignOut?: () => void;
 }
 
@@ -27,10 +29,10 @@ function buildWelcome(me: MeResponse, profile: Profile): string {
   if (me.user.has_resume && !skillsBlock) {
     skillsBlock = `\n\nWe saved your resume text so I can reference your background when it helps.`;
   }
-  return `Hey ${name}! I'm OnBirdie, your onboarding agent. I know you're a **${role}** — I'll tailor guidance to that.${skillsBlock}\n\nHere's what I can help you with:\n• **Codebase tour** — walk through the parts that matter for your role\n• **Task breakdown** — turn your first task into steps\n• **Q&A** — ask about the repo\n\nWhat would you like to start with?`;
+  return `Hey ${name}! I'm OnBirdie, your onboarding agent. I know you're a **${role}** — I'll tailor guidance to that.${skillsBlock}\n\nHere's what I can help you with:\n• **Onboarding guide** — expand the section above for files, employer tasks, and your checklist plan\n• **Codebase tour** — walk through what matters for your role\n• **Q&A** — ask about the repo or your tasks\n\nWhat would you like to start with?`;
 }
 
-export const ChatView: React.FC<Props> = ({ me, profile, onSignOut }) => {
+export const ChatView: React.FC<Props> = ({ me, profile, onMeUpdated, onSignOut }) => {
   const [messages, setMessages] = useState<Message[]>([
     { id: 0, role: "agent", text: buildWelcome(me, profile) },
   ]);
@@ -68,7 +70,7 @@ export const ChatView: React.FC<Props> = ({ me, profile, onSignOut }) => {
     return () => {
       cancelled = true;
     };
-  }, [highlightKey]);
+  }, [highlightKey, me.employer.highlight_paths]);
 
   const send = () => {
     const text = input.trim();
@@ -132,27 +134,12 @@ export const ChatView: React.FC<Props> = ({ me, profile, onSignOut }) => {
         )}
       </div>
 
-      {hints && hints.length > 0 && (
-        <div style={styles.hintsBar}>
-          <div style={styles.hintsTitle}>Suggested for you in this repo</div>
-          <div style={styles.hintsChips}>
-            {hints.map((f) => (
-              <button
-                key={f.path}
-                type="button"
-                style={styles.hintChip}
-                onClick={() => openFilePath(f.path)}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {hints && hints.length === 0 && hintsNote && (
-        <div style={styles.hintsNote}>{hintsNote}</div>
-      )}
+      <WorkspaceGuidePanel
+        me={me}
+        hints={hints}
+        hintsNote={hintsNote}
+        onMeUpdated={onMeUpdated}
+      />
 
       <div style={styles.messages}>
         {messages.map((msg) => (
@@ -245,7 +232,6 @@ const styles: Record<string, React.CSSProperties> = {
     borderBottom: "1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.1))",
     flexShrink: 0,
   },
-  headerText: { flex: 1, minWidth: 0 },
   headerIcon: { fontSize: "20px" },
   headerText: { flex: 1, minWidth: 0 },
   signOut: {
@@ -259,45 +245,6 @@ const styles: Record<string, React.CSSProperties> = {
   },
   headerTitle: { fontSize: "13px", fontWeight: 700, color: "var(--vscode-foreground)" },
   headerSub: { fontSize: "11px", color: "var(--vscode-descriptionForeground)" },
-  hintsBar: {
-    flexShrink: 0,
-    padding: "8px 12px 10px",
-    borderBottom: "1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.08))",
-    background: "var(--vscode-sideBar-background)",
-  },
-  hintsTitle: {
-    fontSize: "10px",
-    fontWeight: 600,
-    textTransform: "uppercase",
-    letterSpacing: "0.06em",
-    color: "var(--vscode-descriptionForeground)",
-    marginBottom: "6px",
-  },
-  hintsChips: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: "6px",
-  },
-  hintChip: {
-    fontSize: "11px",
-    padding: "4px 8px",
-    borderRadius: "10px",
-    border: "1px solid var(--vscode-widget-border, rgba(255,255,255,0.12))",
-    background: "var(--vscode-editorWidget-background)",
-    color: "var(--vscode-textLink-foreground)",
-    cursor: "pointer",
-    fontFamily: "var(--vscode-font-family)",
-    maxWidth: "100%",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  hintsNote: {
-    fontSize: "11px",
-    color: "var(--vscode-descriptionForeground)",
-    padding: "6px 14px 4px",
-    flexShrink: 0,
-  },
   messages: {
     flex: 1,
     overflowY: "auto",
@@ -305,6 +252,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: "8px",
+    minHeight: 0,
   },
   agentRow: { display: "flex", justifyContent: "flex-start" },
   userRow: { display: "flex", justifyContent: "flex-end" },

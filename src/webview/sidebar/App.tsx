@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
-import type { MeResponse, OnboardingProfilePayload } from "../../types";
-import { LoginView } from "./components/LoginView";
-import { ProfileView, Profile } from "./components/ProfileView";
-import { ChatView } from "./components/ChatView";
+import type { MeResponse, OnboardingProfilePayload } from "../../lib/types";
+import { LoginView } from "./views/LoginView";
+import { ProfileView, Profile } from "./views/ProfileView";
+import { ChatView } from "./views/ChatView";
 import {
   getPersistedState,
   requestLogout,
@@ -149,7 +149,14 @@ export const App: React.FC = () => {
   }
 
   if (phase === "chat" && me && profile) {
-    return <ChatView me={me} profile={profile} onSignOut={handleSignOut} />;
+    return (
+      <ChatView
+        me={me}
+        profile={profile}
+        onMeUpdated={setMe}
+        onSignOut={handleSignOut}
+      />
+    );
   }
 
   return <LoginView onLoggedIn={handleLoggedIn} />;
