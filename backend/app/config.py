@@ -18,14 +18,18 @@ class Settings(BaseSettings):
     # LLM — prefer Lava gateway (see https://lava.so/docs/gateway/forward-proxy)
     lava_secret_key: str = ""
     lava_api_base_url: str = "https://api.lava.so/v1"
-    # Upstream URL passed to Lava ?u= (OpenAI Chat Completions by default)
-    lava_forward_upstream: str = "https://api.openai.com/v1/chat/completions"
+    # Upstream URL passed to Lava ?u= (Gemini OpenAI-compatible chat by default)
+    lava_forward_upstream: str = (
+        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    )
 
     # Fallback: K2 / OpenAI-compatible, or OpenAI directly
     k2_base_url: str = ""
     k2_api_key: str = ""
     openai_api_key: str = ""
     openai_base_url: str = ""
+    # Used when LAVA_SECRET_KEY is set (defaults to Gemini; override if Lava upstream is OpenAI, etc.)
+    lava_chat_model: str = "gemini-2.0-flash"
     chat_model: str = "gpt-4o-mini"
 
 

@@ -30,7 +30,7 @@ function buildWelcome(me: MeResponse, profile: Profile): string {
   if (me.user.has_resume && !skillsBlock) {
     skillsBlock = `\n\nWe saved your resume text so I can reference your background when it helps.`;
   }
-  return `Hey ${name}! I'm OnBirdie, your onboarding agent. I know you're a **${role}** — I'll tailor guidance to that.${skillsBlock}\n\nHere's what I can help you with:\n• **Guide tab** — suggested files, employer tasks, and your checklist plan\n• **Codebase tour** — walk through what matters for your role\n• **Q&A** — ask about the repo or your tasks (this chat)\n\nWhat would you like to start with?`;
+  return `Hey ${name}! I'm OnBirdie, your onboarding agent. I know you're a **${role}** — I'll tailor guidance to that.${skillsBlock}\n\nHere's what I can help you with:\n• **Guide tab** — suggested files, employer tasks, and your XP onboarding run\n• **Codebase tour** — walk through what matters for your role\n• **Q&A** — ask about the repo or your tasks (this chat)\n\nWhat would you like to start with?`;
 }
 
 export const ChatView: React.FC<Props> = ({ me, profile, onMeUpdated, onSignOut }) => {
@@ -240,11 +240,12 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     gap: "10px",
-    padding: "12px 14px",
-    borderBottom: "1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.1))",
+    padding: "10px 12px 10px 14px",
+    borderBottom: "1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.08))",
     flexShrink: 0,
+    background: "var(--vscode-sideBar-background)",
   },
-  headerIcon: { fontSize: "20px" },
+  headerIcon: { fontSize: "18px", lineHeight: 1 },
   headerText: { flex: 1, minWidth: 0 },
   signOut: {
     fontSize: "11px",

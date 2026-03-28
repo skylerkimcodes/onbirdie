@@ -44,11 +44,12 @@ async def _chat_via_lava(
     base = (settings.lava_api_base_url or "https://api.lava.so/v1").strip().rstrip("/")
     upstream = (settings.lava_forward_upstream or "").strip()
     if not upstream:
-        upstream = "https://api.openai.com/v1/chat/completions"
+        upstream = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 
     forward_url = f"{base}/forward?u={urllib.parse.quote(upstream, safe='')}"
+    lava_model = (settings.lava_chat_model or settings.chat_model).strip() or "gemini-2.0-flash"
     payload = {
-        "model": settings.chat_model.strip() or "gpt-4o-mini",
+        "model": lava_model,
         "messages": messages,
         "temperature": temperature,
     }
@@ -148,19 +149,23 @@ def build_system_prompt(
     if isinstance(plan_raw, dict):
         psteps = plan_raw.get("steps")
         if isinstance(psteps, list) and psteps:
-            lines.append("Employee onboarding plan progress (reference when coaching):")
+            lines.append("Employee onboarding run — quest progress (reference when coaching):")
             for ps in psteps:
                 if not isinstance(ps, dict):
                     continue
                 pid = (ps.get("id") or "").strip()
                 ptitle = (ps.get("title") or "").strip()
                 done = bool(ps.get("done"))
-                mark = "done" if done else "todo"
+                mark = "cleared" if done else "open"
                 lines.append(f"- [{mark}] {pid}: {ptitle}")
         else:
-            lines.append("No saved onboarding plan yet — offer to help them build a step-by-step plan.")
+            lines.append(
+                "No saved onboarding run yet — offer to help them start a quest line (actionable steps)."
+            )
     else:
-        lines.append("No saved onboarding plan yet — offer to help them build a step-by-step plan.")
+        lines.append(
+            "No saved onboarding run yet — offer to help them start a quest line (actionable steps)."
+        )
 
     return "\n".join(lines)
 

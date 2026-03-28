@@ -31,9 +31,9 @@ export const WorkspaceGuidePanel: React.FC<Props> = ({
     }
     if (plan?.steps?.length) {
       const done = plan.steps.filter((s) => s.done).length;
-      parts.push(`plan ${done}/${plan.steps.length}`);
+      parts.push(`quests ${done}/${plan.steps.length}`);
     } else {
-      parts.push("no plan yet");
+      parts.push("no run yet");
     }
     return parts.join(" · ");
   }, [hints, hintsNote, tasks.length, plan]);
@@ -41,12 +41,12 @@ export const WorkspaceGuidePanel: React.FC<Props> = ({
   return (
     <div style={styles.root} role="tabpanel" aria-labelledby="onbirdie-tab-guide">
       <div style={styles.panelHeader}>
-        <div style={styles.panelTitle}>Onboarding guide</div>
+        <div style={styles.panelTitle}>Guide</div>
         <div style={styles.panelSubtitle}>{subtitle}</div>
       </div>
       <div style={styles.scroll}>
         {hints && hints.length > 0 && (
-          <div>
+          <section style={styles.section}>
             <div style={styles.sectionLabel}>Suggested files</div>
             <div style={styles.chips}>
               {hints.map((f) => (
@@ -60,16 +60,18 @@ export const WorkspaceGuidePanel: React.FC<Props> = ({
                 </button>
               ))}
             </div>
-          </div>
+          </section>
         )}
 
         {hints && hints.length === 0 && hintsNote && (
-          <p style={styles.note}>{hintsNote}</p>
+          <section style={styles.section}>
+            <p style={styles.note}>{hintsNote}</p>
+          </section>
         )}
 
         {tasks.length > 0 && (
-          <div>
-            <div style={styles.sectionLabel}>Employer tasks ({me.employer.name})</div>
+          <section style={styles.section}>
+            <div style={styles.sectionLabel}>{me.employer.name} — tasks</div>
             <ol style={styles.taskList}>
               {[...tasks]
                 .sort((a, b) => a.sort_order - b.sort_order)
@@ -80,10 +82,12 @@ export const WorkspaceGuidePanel: React.FC<Props> = ({
                   </li>
                 ))}
             </ol>
-          </div>
+          </section>
         )}
 
-        <OnboardingPlanPanel me={me} onMeUpdated={onMeUpdated} embedded />
+        <section style={styles.sectionLast}>
+          <OnboardingPlanPanel me={me} onMeUpdated={onMeUpdated} embedded />
+        </section>
       </div>
     </div>
   );
@@ -99,30 +103,35 @@ const styles: Record<string, React.CSSProperties> = {
   },
   panelHeader: {
     flexShrink: 0,
-    padding: "10px 12px 8px",
+    padding: "12px 12px 10px",
     borderBottom: "1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.08))",
   },
   panelTitle: {
-    fontSize: "11px",
+    fontSize: "12px",
     fontWeight: 700,
-    textTransform: "uppercase",
-    letterSpacing: "0.06em",
+    letterSpacing: "-0.01em",
     color: "var(--vscode-foreground)",
   },
   panelSubtitle: {
     fontSize: "10px",
     color: "var(--vscode-descriptionForeground)",
-    lineHeight: 1.35,
-    marginTop: "4px",
+    lineHeight: 1.4,
+    marginTop: "5px",
   },
   scroll: {
     flex: 1,
     minHeight: 0,
     overflowY: "auto",
-    padding: "12px",
+    padding: "10px 12px 14px",
     display: "flex",
     flexDirection: "column",
-    gap: "14px",
+    gap: "0",
+  },
+  section: {
+    marginBottom: "14px",
+  },
+  sectionLast: {
+    marginBottom: "0",
   },
   sectionLabel: {
     fontSize: "10px",
@@ -159,12 +168,20 @@ const styles: Record<string, React.CSSProperties> = {
   },
   taskList: {
     margin: 0,
-    paddingLeft: "18px",
+    paddingLeft: "16px",
     display: "flex",
     flexDirection: "column",
-    gap: "8px",
+    gap: "10px",
   },
-  taskLi: { fontSize: "11px", lineHeight: 1.45, color: "var(--vscode-foreground)" },
-  taskTitle: { fontWeight: 600, marginBottom: "2px" },
+  taskLi: {
+    fontSize: "11px",
+    lineHeight: 1.5,
+    color: "var(--vscode-foreground)",
+    padding: "8px 10px",
+    borderRadius: "6px",
+    background: "var(--vscode-editorWidget-background, rgba(255,255,255,0.02))",
+    border: "1px solid var(--vscode-widget-border, rgba(255,255,255,0.06))",
+  },
+  taskTitle: { fontWeight: 600, marginBottom: "3px" },
   taskDesc: { color: "var(--vscode-descriptionForeground)", fontWeight: 400 },
 };
