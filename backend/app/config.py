@@ -15,7 +15,8 @@ class Settings(BaseSettings):
     bootstrap_employer_name: str = ""
     bootstrap_employer_join_code: str = ""
 
-    # LLM — prefer Lava gateway (see https://lava.so/docs/gateway/forward-proxy)
+    # Lava = forward proxy to an upstream OpenAI-compatible API (not a model by itself).
+    # See https://lava.so/docs/gateway/forward-proxy
     lava_secret_key: str = ""
     lava_api_base_url: str = "https://api.lava.so/v1"
     # Upstream URL passed to Lava ?u= (Gemini OpenAI-compatible chat by default)
@@ -23,21 +24,22 @@ class Settings(BaseSettings):
         "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
     )
 
-    # Chat + light-tier defaults (style review uses lava_light_model when set, else chat_model)
+    # Default model id when routing through Lava (e.g. Gemini Flash) — used if K2 is not configured for chat.
     chat_model: str = "gpt-4o-mini"
+    # Style-review light tier only (else chat_model)
     lava_light_model: str = ""
     lava_light_provider_key: str = ""
 
-    # Fallback: K2 / OpenAI-compatible, or OpenAI directly
+    # K2: preferred for chat, plan JSON, and tour when K2_BASE_URL + K2_API_KEY are set.
     k2_base_url: str = ""
     k2_api_key: str = ""
     k2_model: str = "k2-think-v2"
     openai_api_key: str = ""
     openai_base_url: str = ""
-    # Used when LAVA_SECRET_KEY is set; falls back to chat_model when empty.
+    # When chat falls back to Lava (no K2): model id must match upstream.
     lava_chat_model: str = ""
 
-    # Style review: "lava_light" uses Lava + small model; "k2" uses K2 directly.
+    # Style review: lava_light = Lava + small/cheap model; k2 = force K2 for reviews too.
     style_review_tier: str = "lava_light"
 
     # Demo: use hardcoded Microsoft-style guide instead of employer.style_guide in MongoDB.

@@ -1,11 +1,13 @@
 import * as vscode from "vscode";
-import { apiRequest } from "./api";
+import { apiRequest, apiUploadFile } from "./api";
 import type {
   ChatApiMessage,
   ChatSendResult,
   MeResponse,
   OnboardingProfilePayload,
   ProfileSaveResult,
+  StyleGuideApiResult,
+  StyleGuideGetResponse,
 } from "./types";
 
 const ACCESS_TOKEN_KEY = "onbirdie.accessToken";
@@ -128,6 +130,67 @@ export async function signOut(
   if (!options?.silent) {
     void vscode.window.showInformationMessage("OnBirdie: signed out.");
   }
+}
+
+export async function uploadResumePdf(
+  secrets: vscode.SecretStorage,
+  file: Uint8Array,
+  fileName: string
+): Promise<ProfileSaveResult> {
+  const token = await getAccessToken(secrets);
+  if (!token) {
+    return { ok: false, error: "Not signed in." };
+  }
+  const res = await apiUploadFile("/api/v1/me/resume-upload", file, fileName, token);
+  if (res.status === 401) {
+    await setAccessToken(secrets, undefined);
+    return { ok: false, error: "Session expired. Sign in again." };
+  }
+  if (!res.ok) {
+    return { ok: false, error: await parseErrorDetail(res) };
+  }
+  const me = (await res.json()) as MeResponse;
+  return { ok: true, me };
+}
+
+export async function fetchStyleGuide(secrets: vscode.SecretStorage): Promise<StyleGuideApiResult> {
+  const token = await getAccessToken(secrets);
+  if (!token) {
+    return { ok: false, error: "Not signed in." };
+  }
+  const res = await apiRequest("GET", "/api/v1/me/style-guide", { token });
+  if (res.status === 401) {
+    await setAccessToken(secrets, undefined);
+    return { ok: false, error: "Session expired. Sign in again." };
+  }
+  if (!res.ok) {
+    return { ok: false, error: await parseErrorDetail(res) };
+  }
+  const data = (await res.json()) as StyleGuideGetResponse;
+  return { ok: true, data };
+}
+
+export async function putStyleGuide(
+  secrets: vscode.SecretStorage,
+  body: { style_guide: string; target: "personal" | "employer" }
+): Promise<StyleGuideApiResult> {
+  const token = await getAccessToken(secrets);
+  if (!token) {
+    return { ok: false, error: "Not signed in." };
+  }
+  const res = await apiRequest("PUT", "/api/v1/me/style-guide", {
+    token,
+    body: { style_guide: body.style_guide, target: body.target },
+  });
+  if (res.status === 401) {
+    await setAccessToken(secrets, undefined);
+    return { ok: false, error: "Session expired. Sign in again." };
+  }
+  if (!res.ok) {
+    return { ok: false, error: await parseErrorDetail(res) };
+  }
+  const data = (await res.json()) as StyleGuideGetResponse;
+  return { ok: true, data };
 }
 
 export async function saveOnboardingProfile(

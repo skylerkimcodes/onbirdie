@@ -127,7 +127,7 @@ export const ChatView: React.FC<Props> = ({ me, profile, onMeUpdated, onSignOut 
           {
             id: Date.now() + 1,
             role: "agent",
-            text: `**Could not reach the assistant.** ${result.error}\n\nConfigure **LAVA_SECRET_KEY** in \`backend/.env\` (see https://lava.so/docs), run the API with \`uvicorn\`, or set **K2_API_KEY** / **OPENAI_API_KEY** as a fallback.`,
+            text: `**Could not reach the assistant.** ${result.error}\n\nConfigure **K2_BASE_URL** + **K2_API_KEY** (preferred for chat), or **LAVA_SECRET_KEY** (see https://lava.so/docs), or **OPENAI_API_KEY**, in \`backend/.env\`, and run the API with \`uvicorn\`.`,
           },
         ]);
       }

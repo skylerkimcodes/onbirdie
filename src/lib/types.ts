@@ -16,8 +16,24 @@ export interface UserPublic {
   experience_band?: string | null;
   linkedin_url?: string | null;
   has_resume: boolean;
+  /** Stored PDF on the server (multipart upload), distinct from pasted text. */
+  has_resume_pdf?: boolean;
   skills_summary?: string | null;
 }
+
+export type StyleGuideEffectiveSource = "personal" | "employer" | "demo" | "none";
+
+/** Stored guides plus what the API uses for style review (personal overrides employer overrides demo). */
+export interface StyleGuideGetResponse {
+  personal_style_guide: string;
+  employer_style_guide: string;
+  effective_style_guide: string;
+  effective_source: StyleGuideEffectiveSource;
+}
+
+export type StyleGuideApiResult =
+  | { ok: true; data: StyleGuideGetResponse }
+  | { ok: false; error: string };
 
 export interface OnboardingTaskPublic {
   id: string;

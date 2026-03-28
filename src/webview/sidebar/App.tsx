@@ -144,6 +144,9 @@ export const App: React.FC = () => {
         initial={profileInitial}
         onComplete={handleProfileComplete}
         onSignOut={handleSignOut}
+        onMeUpdated={setMe}
+        hasResumePdf={me.user.has_resume_pdf}
+        serverHasResume={me.user.has_resume}
       />
     );
   }

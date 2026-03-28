@@ -1,7 +1,10 @@
 """Style-guide review against staged diffs or live file snapshots.
 
-Token strategy: prefer **Lava + small model** (`lava_light`) for mechanical checks; reserve **K2**
-for heavier reasoning elsewhere (codebase tours, explanations) when you wire LangGraph.
+Routing (when K2 is configured for chat/plan/tour):
+- **Style review** defaults to **Lava + light model** (`STYLE_REVIEW_TIER=lava_light`, `LAVA_LIGHT_MODEL` or `CHAT_MODEL`) — cheaper mechanical JSON over diffs.
+- Set `STYLE_REVIEW_TIER=k2` to run the same task on K2 instead.
+
+Lava is the **gateway** (forward proxy); the actual model is the upstream id (e.g. Gemini) passed in the request body.
 """
 
 from __future__ import annotations
@@ -15,7 +18,7 @@ from langchain_openai import ChatOpenAI
 from pydantic import ValidationError
 
 from app.config import settings
-from app.schemas import StyleReviewResponse
+from app.schemas import StyleIssue, StyleReviewResponse
 from app.services.lava_client import lava_forward_chat_completions, openai_message_content
 
 logger = logging.getLogger(__name__)
@@ -44,13 +47,21 @@ SYSTEM_LIVE = """You are OnBirdie's **live code** style assistant for a single f
 
 CRITICAL scope:
 - Judge **source code** against the style guide only (indentation, spacing after keywords, naming, braces, structure).
-- Do **NOT** flag documentation voice, inclusive language in comments as a "style guide" unless the guide explicitly requires it. Do **NOT** invent rules about "you", Oxford commas, or writing tone unless they appear verbatim in the provided style guide text.
-- **guide_quote** must come from the style guide text in the user message (short quoted phrase or heading). Never cite rules that are not in that text.
+- Do **NOT** flag documentation voice or writing-tone rules. **guide_quote** must come from the style guide text in the user message.
 
-Rules:
-- Flag issues only when they match a rule in the provided style guide (or its cross-language "spirit" section when the file is not C#).
-- Set line_start to the 1-based line number when the issue is on a specific line; otherwise null.
-- severity: "error" | "warning" | "info" as appropriate; prefer fewer, high-confidence issues over noise.
+Line numbers (required):
+- The user message contains numbered lines: `    N | ...` where **N** is the 1-based line number.
+- For EVERY issue you output, set **line_start** to that **N** for the line where the problem appears.
+- If one line has multiple distinct problems, you may output multiple issues with the same line_start.
+- Do **not** set line_start to 1 for everything; copy **N** from the listing.
+
+JavaScript / TypeScript naming (avoid false positives):
+- `const` / `let` locals and `require()` bindings are usually **camelCase** (`userRoutes`, `verifyToken`, `myHelper`). **Do not** flag a name that is already valid camelCase (starts with lowercase, no spaces).
+- **Never** emit a suggestion that renames an identifier to the exact same spelling (e.g. "Rename 'x' to 'x'").
+- PascalCase (`App`, `MyClass`) may be used for components or intentional module-style names; do not flag those unless the style guide explicitly forbids them for that construct.
+
+Quality:
+- Prefer **fewer** issues with high confidence. If unsure, omit the issue.
 - Return ONLY valid JSON (no markdown fences):
 {"summary":"string","issues":[{"severity":"info|warning|error","file_path":"string or null","line_start":number or null,"line_hint":"string or null","guide_quote":"string","explanation":"string","suggestion":"string"}]}
 file_path should match the path given in the user message.
@@ -103,6 +114,12 @@ def _language_hint(file_path: str) -> str:
     return "unknown — apply cross-language rules only"
 
 
+def _format_numbered_source(content: str) -> str:
+    """Prefix each line with its 1-based line number so the model returns accurate line_start."""
+    lines = content.splitlines()
+    return "\n".join(f"{i + 1:5d} | {line}" for i, line in enumerate(lines))
+
+
 def _build_user_block_live(style_guide: str, file_path: str, content: str) -> str:
     guide_section = (
         style_guide.strip()
@@ -110,6 +127,7 @@ def _build_user_block_live(style_guide: str, file_path: str, content: str) -> st
         else "(No style guide text. Give only generic notes as info-level issues.)"
     )
     lang = _language_hint(file_path)
+    numbered = _format_numbered_source(content)
     return f"""Style guide:
 ---
 {guide_section}
@@ -118,9 +136,9 @@ def _build_user_block_live(style_guide: str, file_path: str, content: str) -> st
 File path: {file_path}
 Language (for applying rules): {lang}
 
-File content (line numbers are 1-based; first line is line 1):
+Numbered source — use the integer before `|` as **line_start** in your JSON (1-based):
 ---
-{content}
+{numbered}
 ---
 """
 
@@ -134,6 +152,63 @@ def _parse_style_json(payload: str) -> StyleReviewResponse:
         raise RuntimeError(f"Model returned non-JSON: {e}") from e
     except ValidationError as e:
         raise RuntimeError(f"Model JSON did not match schema: {e}") from e
+
+
+_JS_TS_LANG = frozenset(
+    {
+        "JavaScript",
+        "JavaScript (React)",
+        "TypeScript",
+        "TypeScript (React)",
+    }
+)
+
+
+def _is_duplicate_rename_suggestion(blob: str) -> bool:
+    for m in re.finditer(
+        r"(?:[Rr]ename|[Cc]hange)\s+[`'\"]?(\w+)[`'\"]?\s+to\s+[`'\"]?(\w+)[`'\"]?", blob
+    ):
+        if m.group(1) == m.group(2):
+            return True
+    return False
+
+
+def _is_spurious_camelcase_flag(blob: str) -> bool:
+    """Model often flags valid camelCase locals; drop those."""
+    if "camelcase" not in blob.lower():
+        return False
+    vm = re.search(
+        r"(?:variable|identifier|binding|The)\s+[`'\"]([a-zA-Z_$][\w$]*)[`'\"]",
+        blob,
+        re.I,
+    )
+    if not vm:
+        return False
+    name = vm.group(1)
+    return bool(re.match(r"^[a-z][a-zA-Z0-9_$]*$", name))
+
+
+def _filter_spurious_issues(issues: list[StyleIssue], *, lang: str) -> list[StyleIssue]:
+    out: list[StyleIssue] = []
+    for issue in issues:
+        blob = f"{issue.explanation} {issue.suggestion}"
+        if _is_duplicate_rename_suggestion(blob):
+            logger.debug("Dropped duplicate-rename style issue")
+            continue
+        if lang in _JS_TS_LANG and _is_spurious_camelcase_flag(blob):
+            logger.debug("Dropped spurious camelCase style issue")
+            continue
+        out.append(issue)
+    return out
+
+
+def _postprocess_response(result: StyleReviewResponse, *, lang: str) -> StyleReviewResponse:
+    """Drop duplicate renames and obvious JS/TS false positives; refresh summary if all dropped."""
+    filtered = _filter_spurious_issues(list(result.issues), lang=lang)
+    summary = result.summary
+    if len(result.issues) > 0 and len(filtered) == 0:
+        summary = "No actionable issues after validation (redundant or invalid suggestions were removed)."
+    return result.model_copy(update={"issues": filtered, "summary": summary})
 
 
 async def _complete_with_k2(*, system: str, user_block: str) -> str:
@@ -227,10 +302,13 @@ async def _run_model(*, system: str, user_block: str) -> StyleReviewResponse:
 async def run_style_review(*, style_guide: str, diff: str) -> StyleReviewResponse:
     diff_trimmed = diff if len(diff) <= MAX_DIFF_CHARS else diff[:MAX_DIFF_CHARS]
     user_block = _build_user_block_diff(style_guide, diff_trimmed)
-    return await _run_model(system=SYSTEM_DIFF, user_block=user_block)
+    result = await _run_model(system=SYSTEM_DIFF, user_block=user_block)
+    return _postprocess_response(result, lang="")
 
 
 async def run_style_review_live(*, style_guide: str, file_path: str, content: str) -> StyleReviewResponse:
     trimmed = content if len(content) <= MAX_LIVE_CHARS else content[:MAX_LIVE_CHARS]
     user_block = _build_user_block_live(style_guide, file_path, trimmed)
-    return await _run_model(system=SYSTEM_LIVE, user_block=user_block)
+    lang = _language_hint(file_path)
+    result = await _run_model(system=SYSTEM_LIVE, user_block=user_block)
+    return _postprocess_response(result, lang=lang)

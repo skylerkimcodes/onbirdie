@@ -1,5 +1,6 @@
-import React, { useState } from "react";
-import { pickResumeFile } from "../vscodeBridge";
+import React, { useEffect, useState } from "react";
+import type { MeResponse } from "../../../lib/types";
+import { uploadResumeToServer } from "../vscodeBridge";
 
 interface Props {
   defaultName?: string;
@@ -8,6 +9,11 @@ interface Props {
   initial?: Partial<Profile>;
   onComplete: (profile: Profile) => Promise<void>;
   onSignOut?: () => void;
+  /** After a server PDF upload, refresh session user (resume text + flags). */
+  onMeUpdated?: (me: MeResponse) => void;
+  hasResumePdf?: boolean;
+  /** True when the API has non-empty resume text (including from a server PDF upload). */
+  serverHasResume?: boolean;
 }
 
 export interface Profile {
@@ -38,6 +44,9 @@ export const ProfileView: React.FC<Props> = ({
   initial,
   onComplete,
   onSignOut,
+  onMeUpdated,
+  hasResumePdf = false,
+  serverHasResume = false,
 }) => {
   const [name, setName] = useState(initial?.name ?? defaultName);
   const [role, setRole] = useState(initial?.role ?? "");
@@ -46,25 +55,42 @@ export const ProfileView: React.FC<Props> = ({
   const [resumeText, setResumeText] = useState(initial?.resumeText ?? "");
   const [skillsSummary, setSkillsSummary] = useState(initial?.skillsSummary ?? "");
   const [saving, setSaving] = useState(false);
+  const [uploadingPdf, setUploadingPdf] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  /** True after a successful server PDF upload in this session (parent `me` may lag). */
+  const [resumeUploadedServer, setResumeUploadedServer] = useState(
+    () => Boolean(serverHasResume || hasResumePdf)
+  );
+
+  useEffect(() => {
+    setResumeUploadedServer(Boolean(serverHasResume || hasResumePdf));
+  }, [serverHasResume, hasResumePdf]);
 
   const roles = roleOptions.length > 0 ? roleOptions : FALLBACK_ROLES;
   const hasLinkedIn = linkedinUrl.trim().length > 0;
-  const hasResume = resumeText.trim().length > 0;
+  const hasResumeLocal = resumeText.trim().length > 0;
+  const hasResume =
+    hasResumeLocal || resumeUploadedServer || Boolean(serverHasResume) || Boolean(hasResumePdf);
   const hasBackground = hasLinkedIn || hasResume;
   const canSubmit = Boolean(name.trim() && role && experience && hasBackground);
 
-  const onPickResume = async () => {
-    const result = await pickResumeFile();
-    if ("cancelled" in result && result.cancelled) {
-      return;
-    }
-    if ("error" in result) {
-      setError(result.error);
-      return;
-    }
-    if ("text" in result) {
-      setResumeText(result.text);
+  const onUploadPdfServer = async () => {
+    setError(undefined);
+    setUploadingPdf(true);
+    try {
+      const result = await uploadResumeToServer();
+      if ("cancelled" in result && result.cancelled) {
+        return;
+      }
+      if ("ok" in result && !result.ok) {
+        setError(result.error);
+        return;
+      }
+      if ("ok" in result && result.ok) {
+        onMeUpdated?.(result.me);
+      }
+    } finally {
+      setUploadingPdf(false);
     }
   };
 
@@ -153,8 +179,8 @@ export const ProfileView: React.FC<Props> = ({
 
         <label style={styles.label}>LinkedIn or resume</label>
         <p style={styles.hint}>
-          Add <strong>either</strong> your LinkedIn URL <strong>or</strong> resume text (paste below or upload a{" "}
-          <strong>PDF</strong> or text file).
+          Add <strong>either</strong> your LinkedIn URL, <strong>paste</strong> resume text below, or{" "}
+          <strong>upload a PDF</strong> to the server (we extract text for your profile).
         </p>
         <label htmlFor="onbirdie-linkedin" style={styles.subLabel}>LinkedIn profile URL</label>
         <input
@@ -167,13 +193,22 @@ export const ProfileView: React.FC<Props> = ({
           disabled={saving}
         />
 
-        <label style={styles.subLabel}>Resume (paste or PDF / text file)</label>
+        <label style={styles.subLabel}>Resume (paste or upload PDF)</label>
         <div style={styles.resumeRow}>
-          <button type="button" style={styles.secondaryBtn} onClick={onPickResume} disabled={saving}>
-            Choose PDF or text file…
+          <button
+            type="button"
+            style={styles.secondaryBtn}
+            onClick={onUploadPdfServer}
+            disabled={saving || uploadingPdf}
+            title="Stores the PDF on your account and extracts text on the server (up to 5 MB)"
+          >
+            {uploadingPdf ? "Uploading…" : "Upload PDF to server…"}
           </button>
           {resumeText.trim() ? (
             <span style={styles.resumeMeta}>{resumeText.length.toLocaleString()} characters</span>
+          ) : null}
+          {(resumeUploadedServer || hasResumePdf || serverHasResume) && !hasResumeLocal ? (
+            <span style={styles.resumeMeta}>Resume on file</span>
           ) : null}
         </div>
         <textarea

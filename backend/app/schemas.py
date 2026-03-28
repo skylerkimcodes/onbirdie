@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal, Optional
 
-from pydantic import BaseModel, EmailStr, Field, model_validator
+from pydantic import BaseModel, EmailStr, Field
 
 
 class RegisterBody(BaseModel):
@@ -46,6 +46,7 @@ class UserPublic(BaseModel):
     experience_band: Optional[str] = None
     linkedin_url: Optional[str] = None
     has_resume: bool = False
+    has_resume_pdf: bool = False
     skills_summary: Optional[str] = None
 
 
@@ -86,12 +87,6 @@ class OnboardingProfileBody(BaseModel):
     linkedin_url: str = Field(default="", max_length=500)
     resume_text: str = Field(default="", max_length=100_000)
     skills_summary: str = Field(default="", max_length=4000)
-
-    @model_validator(mode="after")
-    def linkedin_or_resume(self) -> "OnboardingProfileBody":
-        if not self.linkedin_url.strip() and not self.resume_text.strip():
-            raise ValueError("Provide a LinkedIn URL or resume text (paste or upload).")
-        return self
 
 
 class ChatTurn(BaseModel):
@@ -146,3 +141,19 @@ class StyleReviewResponse(BaseModel):
         default=None,
         description="Which backend ran the review (for cost / routing visibility)",
     )
+
+
+class StyleGuideGetResponse(BaseModel):
+    """Stored guides and what the API uses for reviews (personal overrides employer overrides demo)."""
+
+    personal_style_guide: str = ""
+    employer_style_guide: str = ""
+    effective_style_guide: str
+    effective_source: Literal["personal", "employer", "demo", "none"]
+
+
+class StyleGuidePutBody(BaseModel):
+    """Replaces the **entire** guide for the target; empty string clears that bucket."""
+
+    style_guide: str = Field(default="", max_length=500_000)
+    target: Literal["personal", "employer"] = "personal"

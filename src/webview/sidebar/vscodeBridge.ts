@@ -4,6 +4,7 @@ import type {
   MeResponse,
   OnboardingProfilePayload,
   ProfileSaveResult,
+  StyleGuideApiResult,
   StyleReviewOutcome,
   TourGenerateResult,
   WorkspaceHintsResult,
@@ -69,12 +70,19 @@ let hintsResolve: ((r: WorkspaceHintsResult) => void) | undefined;
 let chatResolve: ((r: ChatSendResult) => void) | undefined;
 let planMutResolve: ((r: ProfileSaveResult) => void) | undefined;
 let tourResolve: ((r: TourGenerateResult) => void) | undefined;
+let styleGuideGetResolve: ((r: StyleGuideApiResult) => void) | undefined;
+let styleGuideSaveResolve: ((r: StyleGuideApiResult) => void) | undefined;
 export type ResumePickResult =
   | { text: string }
   | { cancelled: true }
   | { error: string };
 
+export type ResumeServerUploadResult =
+  | ProfileSaveResult
+  | { cancelled: true };
+
 let resumeResolve: ((r: ResumePickResult) => void) | undefined;
+let resumeServerResolve: ((r: ResumeServerUploadResult) => void) | undefined;
 
 if (typeof window !== "undefined") {
   window.addEventListener("message", (event: MessageEvent) => {
@@ -107,6 +115,21 @@ if (typeof window !== "undefined") {
       resumeResolve = undefined;
       fn(data.payload as ResumePickResult);
     }
+    if (data.type === "profile/resumeUploadResult" && resumeServerResolve) {
+      const fn = resumeServerResolve;
+      resumeServerResolve = undefined;
+      fn(data.payload as ResumeServerUploadResult);
+    }
+    if (data.type === "styleGuide/result" && styleGuideGetResolve) {
+      const fn = styleGuideGetResolve;
+      styleGuideGetResolve = undefined;
+      fn(data.payload as StyleGuideApiResult);
+    }
+    if (data.type === "styleGuide/saveResult" && styleGuideSaveResolve) {
+      const fn = styleGuideSaveResolve;
+      styleGuideSaveResolve = undefined;
+      fn(data.payload as StyleGuideApiResult);
+    }
     if (data.type === "tour/result" && tourResolve) {
       const fn = tourResolve;
       tourResolve = undefined;
@@ -128,6 +151,31 @@ export function pickResumeFile(): Promise<ResumePickResult> {
   return new Promise((resolve) => {
     resumeResolve = resolve;
     vscode.postMessage({ type: "profile/pickResume" });
+  });
+}
+
+/** Pick a PDF and upload to the API (stores file + extracted text on the account). */
+export function uploadResumeToServer(): Promise<ResumeServerUploadResult> {
+  return new Promise((resolve) => {
+    resumeServerResolve = resolve;
+    vscode.postMessage({ type: "profile/resumeUploadServer" });
+  });
+}
+
+export function requestStyleGuideState(): Promise<StyleGuideApiResult> {
+  return new Promise((resolve) => {
+    styleGuideGetResolve = resolve;
+    vscode.postMessage({ type: "styleGuide/get" });
+  });
+}
+
+export function saveStyleGuide(
+  text: string,
+  target: "personal" | "employer"
+): Promise<StyleGuideApiResult> {
+  return new Promise((resolve) => {
+    styleGuideSaveResolve = resolve;
+    vscode.postMessage({ type: "styleGuide/save", payload: { text, target } });
   });
 }
 

@@ -1,18 +1,20 @@
 import * as vscode from "vscode";
-import { apiRequest } from "../lib/api";
 import {
   clearOnboardingPlan,
   fetchMe,
+  fetchStyleGuide,
   generateOnboardingPlan,
   generateTour,
   getAccessToken,
   loginWithCredentials,
   parseErrorDetail,
   patchPlanStep,
+  putStyleGuide,
   registerWithCredentials,
   saveOnboardingProfile,
   sendChat,
   signOut,
+  uploadResumePdf,
 } from "../lib/auth";
 import type { ChatApiMessage, OnboardingProfilePayload } from "../lib/types";
 import { extractResumePlainText } from "../lib/resumeText";
@@ -138,6 +140,34 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             }
             break;
           }
+          case "profile/resumeUploadServer": {
+            const uris = await vscode.window.showOpenDialog({
+              canSelectMany: false,
+              openLabel: "Upload PDF to OnBirdie",
+              filters: { PDF: ["pdf"] },
+            });
+            if (!uris?.[0]) {
+              wv.postMessage({
+                type: "profile/resumeUploadResult",
+                payload: { cancelled: true as const },
+              });
+              break;
+            }
+            try {
+              const buf = await vscode.workspace.fs.readFile(uris[0]);
+              const base = uris[0].path.split(/[/\\]/).pop() || "resume.pdf";
+              const result = await uploadResumePdf(secrets, buf, base);
+              wv.postMessage({ type: "profile/resumeUploadResult", payload: result });
+            } catch (e) {
+              const message =
+                e instanceof Error ? e.message : "Could not upload this PDF.";
+              wv.postMessage({
+                type: "profile/resumeUploadResult",
+                payload: { ok: false as const, error: message },
+              });
+            }
+            break;
+          }
           case "chat/send": {
             const p = message.payload as { messages?: ChatApiMessage[] };
             const msgs = p?.messages ?? [];
@@ -246,51 +276,20 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             break;
           }
           case "styleGuide/get": {
-            const token = await getAccessToken(secrets);
-            if (!token) {
-              wv.postMessage({
-                type: "styleGuide/result",
-                payload: { ok: false as const, error: "Sign in first." },
-              });
-              break;
-            }
-            const res = await apiRequest("GET", "/api/v1/me/style-guide", { token });
-            if (!res.ok) {
-              wv.postMessage({
-                type: "styleGuide/result",
-                payload: { ok: false as const, error: await parseErrorDetail(res) },
-              });
-              break;
-            }
-            const data = (await res.json()) as { style_guide: string };
-            wv.postMessage({
-              type: "styleGuide/result",
-              payload: { ok: true as const, style_guide: data.style_guide ?? "" },
-            });
+            const result = await fetchStyleGuide(secrets);
+            wv.postMessage({ type: "styleGuide/result", payload: result });
             break;
           }
           case "styleGuide/save": {
-            const p = message.payload as { text?: string };
-            const token = await getAccessToken(secrets);
-            if (!token) {
-              wv.postMessage({
-                type: "styleGuide/saveResult",
-                payload: { ok: false as const, error: "Sign in first." },
-              });
-              break;
-            }
-            const res = await apiRequest("PUT", "/api/v1/me/style-guide", {
-              body: { style_guide: p?.text ?? "" },
-              token,
+            const p = message.payload as {
+              text?: string;
+              target?: "personal" | "employer";
+            };
+            const result = await putStyleGuide(secrets, {
+              style_guide: p?.text ?? "",
+              target: p?.target ?? "personal",
             });
-            if (!res.ok) {
-              wv.postMessage({
-                type: "styleGuide/saveResult",
-                payload: { ok: false as const, error: await parseErrorDetail(res) },
-              });
-              break;
-            }
-            wv.postMessage({ type: "styleGuide/saveResult", payload: { ok: true as const } });
+            wv.postMessage({ type: "styleGuide/saveResult", payload: result });
             break;
           }
           default:

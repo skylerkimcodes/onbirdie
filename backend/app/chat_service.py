@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from app.config import settings
@@ -8,6 +8,44 @@ from app.schemas import ChatTurn
 from app.services.lava_client import lava_forward_chat_completions, openai_message_content
 
 _RESUME_CAP = 12_000
+
+
+def _k2_configured() -> bool:
+    return bool(settings.k2_base_url.strip() and settings.k2_api_key.strip())
+
+
+def _openai_messages_to_lc(messages: list[dict[str, str]]) -> list[BaseMessage]:
+    out: list[BaseMessage] = []
+    for m in messages:
+        role = m.get("role", "user")
+        content = m.get("content", "")
+        if role == "system":
+            out.append(SystemMessage(content=content))
+        elif role == "assistant":
+            out.append(AIMessage(content=content))
+        else:
+            out.append(HumanMessage(content=content))
+    return out
+
+
+async def _chat_via_k2(
+    messages: list[dict[str, str]], *, temperature: float = 0.35
+) -> str:
+    """Primary path for chat, plan JSON, and tour when K2 is configured."""
+    if not _k2_configured():
+        raise RuntimeError("K2 is not configured (set K2_BASE_URL and K2_API_KEY)")
+    llm = ChatOpenAI(
+        base_url=settings.k2_base_url.rstrip("/"),
+        api_key=settings.k2_api_key,
+        model=(settings.k2_model or "k2-think-v2").strip(),
+        temperature=temperature,
+    )
+    lc_messages = _openai_messages_to_lc(messages)
+    result = await llm.ainvoke(lc_messages)
+    text = result.content
+    if not isinstance(text, str):
+        text = str(text) if text is not None else ""
+    return text.strip() or "I did not get a response. Please try again."
 
 
 def llm_client_openai_compatible(*, temperature: float = 0.35) -> ChatOpenAI | None:
@@ -35,6 +73,7 @@ def _openai_style_messages(system_prompt: str, turns: list[ChatTurn]) -> list[di
 async def _chat_via_lava(
     messages: list[dict[str, str]], *, temperature: float = 0.35
 ) -> str:
+    """Lighter / cheaper path via Lava forward proxy (e.g. Gemini Flash) when K2 is not used."""
     upstream = (settings.lava_forward_upstream or "").strip()
     if not upstream:
         upstream = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
@@ -139,19 +178,21 @@ def build_system_prompt(
 async def invoke_system_user(
     system: str, user: str, *, temperature: float = 0.25
 ) -> str:
-    """Single-turn LLM call (used for JSON plan generation, etc.)."""
+    """Single-turn LLM call (plan JSON, tour steps). Prefers K2, then Lava, then direct OpenAI-compatible."""
     messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": user},
     ]
+    if _k2_configured():
+        return await _chat_via_k2(messages, temperature=temperature)
     if (settings.lava_secret_key or "").strip():
         return await _chat_via_lava(messages, temperature=temperature)
 
     llm = llm_client_openai_compatible(temperature=temperature)
     if llm is None:
         raise RuntimeError(
-            "LLM is not configured. Set LAVA_SECRET_KEY (recommended), or K2_API_KEY / OPENAI_API_KEY "
-            "in backend/.env."
+            "LLM is not configured. Set K2_BASE_URL and K2_API_KEY, or LAVA_SECRET_KEY, or "
+            "OPENAI_API_KEY in backend/.env."
         )
     result = await llm.ainvoke(
         [
@@ -168,14 +209,16 @@ async def invoke_system_user(
 async def run_chat(system_prompt: str, turns: list[ChatTurn]) -> str:
     oa_messages = _openai_style_messages(system_prompt, turns)
 
+    if _k2_configured():
+        return await _chat_via_k2(oa_messages, temperature=0.35)
     if (settings.lava_secret_key or "").strip():
         return await _chat_via_lava(oa_messages)
 
     llm = llm_client_openai_compatible(temperature=0.35)
     if llm is None:
         raise RuntimeError(
-            "LLM is not configured. Set LAVA_SECRET_KEY (recommended), or K2_API_KEY / OPENAI_API_KEY "
-            "in backend/.env."
+            "LLM is not configured. Set K2_BASE_URL and K2_API_KEY, or LAVA_SECRET_KEY, or "
+            "OPENAI_API_KEY in backend/.env."
         )
 
     lc_messages: list[SystemMessage | HumanMessage | AIMessage] = [

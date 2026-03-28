@@ -23,6 +23,27 @@ const LIVE_LANG = new Set([
   "plaintext",
 ]);
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Try to find a 1-based line by searching for an identifier mentioned in the issue text. */
+function guessLine1Based(doc: vscode.TextDocument, issue: StyleIssue): number | undefined {
+  const blob = `${issue.explanation}\n${issue.suggestion}`;
+  const m = blob.match(/(?:variable|identifier|binding|The)\s+[`'"]([a-zA-Z_$][\w$]*)[`'"]/i);
+  if (!m) {
+    return undefined;
+  }
+  const name = m[1];
+  const re = new RegExp(`\\b${escapeRegExp(name)}\\b`);
+  for (let i = 0; i < doc.lineCount; i++) {
+    if (re.test(doc.lineAt(i).text)) {
+      return i + 1;
+    }
+  }
+  return undefined;
+}
+
 function issueToDiagnostic(
   doc: vscode.TextDocument,
   issue: StyleIssue,
@@ -35,22 +56,40 @@ function issueToDiagnostic(
         ? vscode.DiagnosticSeverity.Warning
         : vscode.DiagnosticSeverity.Information;
 
-  let range: vscode.Range;
   const lineStart = issue.line_start;
-  if (typeof lineStart === "number" && lineStart >= 1 && lineStart <= doc.lineCount) {
-    const line = doc.lineAt(lineStart - 1);
-    range = new vscode.Range(lineStart - 1, 0, lineStart - 1, Math.max(line.text.length, 1));
-  } else {
-    // Without a line, stacking every issue on line 1 hides entries in Problems. Stagger by index.
-    const fallbackLine = Math.min(index, Math.max(0, doc.lineCount - 1));
-    const line = doc.lineAt(fallbackLine);
-    range = new vscode.Range(fallbackLine, 0, fallbackLine, Math.max(line.text.length, 1));
+  let line1Based: number | undefined =
+    typeof lineStart === "number" && lineStart >= 1 && lineStart <= doc.lineCount
+      ? lineStart
+      : undefined;
+  if (line1Based === undefined) {
+    line1Based = guessLine1Based(doc, issue);
   }
+  if (line1Based === undefined) {
+    // Stagger 1-based lines so entries do not all stack on line 1
+    line1Based = Math.min(index + 1, doc.lineCount);
+  }
+
+  const lineIdx = line1Based - 1;
+  const line = doc.lineAt(lineIdx);
+  let startCol = 0;
+  let endCol = Math.max(line.text.length, 1);
+
+  const blob = `${issue.explanation} ${issue.suggestion}`;
+  const nameMatch = blob.match(/(?:variable|identifier|binding|The)\s+[`'"]([a-zA-Z_$][\w$]*)[`'"]/i);
+  if (nameMatch) {
+    const name = nameMatch[1];
+    const idx = line.text.search(new RegExp(`\\b${escapeRegExp(name)}\\b`));
+    if (idx >= 0) {
+      startCol = idx;
+      endCol = idx + name.length;
+    }
+  }
+
+  const range = new vscode.Range(lineIdx, startCol, lineIdx, endCol);
 
   const msg = `[OnBirdie style] ${issue.guide_quote}\n${issue.explanation}\n→ ${issue.suggestion}`;
   const d = new vscode.Diagnostic(range, msg, sev);
   d.source = "OnBirdie";
-  // Stable code so Problems filter and hovers show a consistent category (not confused with ESLint/tsserver).
   d.code = "style-guide";
   return d;
 }
@@ -110,7 +149,7 @@ export function registerLiveStyleDiagnostics(context: vscode.ExtensionContext): 
     if (prev) {
       clearTimeout(prev);
     }
-    const ms = vscode.workspace.getConfiguration("onbirdie").get<number>("liveStyleDebounceMs", 1000);
+    const ms = vscode.workspace.getConfiguration("onbirdie").get<number>("liveStyleDebounceMs", 100);
     pending.set(
       key,
       setTimeout(() => {

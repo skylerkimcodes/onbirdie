@@ -1,6 +1,11 @@
-import React, { useMemo } from "react";
-import type { MeResponse, WorkspaceHintFile } from "../../../lib/types";
-import { openFilePath } from "../vscodeBridge";
+import React, { useEffect, useMemo, useState } from "react";
+import type {
+  MeResponse,
+  StyleGuideEffectiveSource,
+  StyleGuideGetResponse,
+  WorkspaceHintFile,
+} from "../../../lib/types";
+import { openFilePath, requestStyleGuideState, saveStyleGuide } from "../vscodeBridge";
 import { OnboardingPlanPanel } from "./OnboardingPlanPanel";
 
 interface Props {
@@ -8,6 +13,21 @@ interface Props {
   hints: WorkspaceHintFile[] | null;
   hintsNote: string | undefined;
   onMeUpdated: (me: MeResponse) => void;
+}
+
+function effectiveSourceLabel(s: StyleGuideEffectiveSource): string {
+  switch (s) {
+    case "personal":
+      return "Your personal guide";
+    case "employer":
+      return "Team guide";
+    case "demo":
+      return "Built-in demo";
+    case "none":
+      return "Defaults only";
+    default:
+      return s;
+  }
 }
 
 export const WorkspaceGuidePanel: React.FC<Props> = ({
@@ -18,6 +38,37 @@ export const WorkspaceGuidePanel: React.FC<Props> = ({
 }) => {
   const tasks = me.onboarding_tasks ?? [];
   const plan = me.onboarding_plan;
+
+  const [styleGuide, setStyleGuide] = useState<StyleGuideGetResponse | null>(null);
+  const [styleGuideLoading, setStyleGuideLoading] = useState(true);
+  const [styleGuideError, setStyleGuideError] = useState<string | undefined>();
+  const [personalDraft, setPersonalDraft] = useState("");
+  const [employerDraft, setEmployerDraft] = useState("");
+  const [savingPersonal, setSavingPersonal] = useState(false);
+  const [savingEmployer, setSavingEmployer] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      setStyleGuideLoading(true);
+      setStyleGuideError(undefined);
+      const res = await requestStyleGuideState();
+      if (cancelled) {
+        return;
+      }
+      setStyleGuideLoading(false);
+      if (!res.ok) {
+        setStyleGuideError(res.error);
+        return;
+      }
+      setStyleGuide(res.data);
+      setPersonalDraft(res.data.personal_style_guide);
+      setEmployerDraft(res.data.employer_style_guide);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [me.user.id]);
 
   const subtitle = useMemo(() => {
     const parts: string[] = [];
@@ -163,8 +214,61 @@ const styles: Record<string, React.CSSProperties> = {
   note: {
     fontSize: "11px",
     color: "var(--vscode-descriptionForeground)",
-    margin: 0,
+    margin: "0 0 8px 0",
     lineHeight: 1.45,
+  },
+  subLabel: {
+    fontSize: "10px",
+    fontWeight: 600,
+    color: "var(--vscode-descriptionForeground)",
+    display: "block",
+    marginTop: "8px",
+    marginBottom: "4px",
+  },
+  textarea: {
+    width: "100%",
+    boxSizing: "border-box",
+    background: "var(--vscode-input-background)",
+    color: "var(--vscode-input-foreground)",
+    border: "1px solid var(--vscode-input-border, transparent)",
+    borderRadius: "4px",
+    padding: "8px 10px",
+    fontSize: "11px",
+    fontFamily: "var(--vscode-font-family)",
+    lineHeight: 1.45,
+    resize: "vertical",
+    marginBottom: "6px",
+  },
+  stylePreview: {
+    width: "100%",
+    boxSizing: "border-box",
+    background: "var(--vscode-editor-inactiveSelectionBackground, rgba(255,255,255,0.04))",
+    color: "var(--vscode-descriptionForeground)",
+    border: "1px solid var(--vscode-widget-border, rgba(255,255,255,0.08))",
+    borderRadius: "4px",
+    padding: "8px 10px",
+    fontSize: "11px",
+    fontFamily: "var(--vscode-font-family)",
+    lineHeight: 1.45,
+    resize: "vertical",
+    marginBottom: "8px",
+  },
+  smallBtn: {
+    fontSize: "11px",
+    padding: "5px 12px",
+    borderRadius: "4px",
+    border: "1px solid var(--vscode-button-background)",
+    background: "var(--vscode-button-background)",
+    color: "var(--vscode-button-foreground)",
+    cursor: "pointer",
+    fontFamily: "var(--vscode-font-family)",
+    marginBottom: "6px",
+  },
+  styleError: {
+    fontSize: "11px",
+    color: "var(--vscode-errorForeground, #f14c4c)",
+    margin: "0 0 8px 0",
+    lineHeight: 1.4,
   },
   taskList: {
     margin: 0,
