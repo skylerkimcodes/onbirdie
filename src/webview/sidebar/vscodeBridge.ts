@@ -4,6 +4,7 @@ import type {
   MeResponse,
   OnboardingProfilePayload,
   ProfileSaveResult,
+  TourGenerateResult,
   WorkspaceHintsResult,
 } from "../../lib/types";
 
@@ -62,6 +63,7 @@ let saveResolve: ((r: ProfileSaveResult) => void) | undefined;
 let hintsResolve: ((r: WorkspaceHintsResult) => void) | undefined;
 let chatResolve: ((r: ChatSendResult) => void) | undefined;
 let planMutResolve: ((r: ProfileSaveResult) => void) | undefined;
+let tourResolve: ((r: TourGenerateResult) => void) | undefined;
 export type ResumePickResult =
   | { text: string }
   | { cancelled: true }
@@ -99,6 +101,11 @@ if (typeof window !== "undefined") {
       const fn = resumeResolve;
       resumeResolve = undefined;
       fn(data.payload as ResumePickResult);
+    }
+    if (data.type === "tour/result" && tourResolve) {
+      const fn = tourResolve;
+      tourResolve = undefined;
+      fn(data.payload as TourGenerateResult);
     }
   });
 }
@@ -159,6 +166,17 @@ export function requestPlanClear(): Promise<ProfileSaveResult> {
 
 export function openFilePath(fsPath: string): void {
   vscode.postMessage({ type: "openFile", payload: fsPath });
+}
+
+export function requestTourGenerate(userRole: string): Promise<TourGenerateResult> {
+  return new Promise((resolve) => {
+    tourResolve = resolve;
+    vscode.postMessage({ type: "tour/generate", payload: { userRole } });
+  });
+}
+
+export function requestTourGoto(absolutePath: string, startLine: number, endLine: number): void {
+  vscode.postMessage({ type: "tour/goto", payload: { absolutePath, startLine, endLine } });
 }
 
 export function subscribeToExtension(

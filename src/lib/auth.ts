@@ -233,3 +233,29 @@ export async function clearOnboardingPlan(secrets: vscode.SecretStorage): Promis
   const me = (await res.json()) as MeResponse;
   return { ok: true, me };
 }
+
+export async function generateTour(
+  secrets: vscode.SecretStorage,
+  files: { path: string; content: string }[],
+  userRole: string
+): Promise<{ ok: true; rawSteps: Array<{ file: string; startLine: number; endLine: number; title: string; explanation: string }> } | { ok: false; error: string }> {
+  const token = await getAccessToken(secrets);
+  if (!token) {
+    return { ok: false, error: "Not signed in." };
+  }
+  const res = await apiRequest("POST", "/api/v1/tour/generate", {
+    token,
+    body: { files, user_role: userRole },
+  });
+  if (res.status === 401) {
+    await setAccessToken(secrets, undefined);
+    return { ok: false, error: "Session expired. Sign in again." };
+  }
+  if (!res.ok) {
+    return { ok: false, error: await parseErrorDetail(res) };
+  }
+  const data = (await res.json()) as {
+    steps: Array<{ file: string; startLine: number; endLine: number; title: string; explanation: string }>;
+  };
+  return { ok: true, rawSteps: data.steps };
+}

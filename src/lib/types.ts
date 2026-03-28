@@ -77,3 +77,16 @@ export interface ChatApiMessage {
 export type ChatSendResult =
   | { ok: true; message: string }
   | { ok: false; error: string };
+
+export interface TourStep {
+  file: string;
+  absolutePath: string;
+  startLine: number;
+  endLine: number;
+  title: string;
+  explanation: string;
+}
+
+export type TourGenerateResult =
+  | { ok: true; steps: TourStep[] }
+  | { ok: false; error: string };
