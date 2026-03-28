@@ -86,43 +86,6 @@ export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded
         </div>
       </div>
 
-      {tasks.length > 0 && (
-        <label style={styles.focusLabel}>
-          Focus employer task (optional)
-          <select
-            style={styles.select}
-            value={focusId}
-            onChange={(e) => setFocusId(e.target.value)}
-            disabled={busy}
-          >
-            <option value="">All tasks (balanced first week)</option>
-            {tasks.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.title}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-
-      <div style={styles.actions}>
-        <button
-          type="button"
-          style={{ ...styles.primaryBtn, opacity: busy ? 0.5 : 1 }}
-          disabled={busy}
-          onClick={runGenerate}
-        >
-          {plan?.steps?.length ? "Regenerate plan" : "Build my plan"}
-        </button>
-        {plan?.steps?.length ? (
-          <button type="button" style={styles.ghostBtn} disabled={busy} onClick={clearPlan}>
-            Clear
-          </button>
-        ) : null}
-      </div>
-
-      {error && <p style={styles.err}>{error}</p>}
-
       {plan?.steps && plan.steps.length > 0 && (
         <>
           <div style={styles.progressRow}>
@@ -153,6 +116,45 @@ export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded
           </ul>
         </>
       )}
+
+      <div style={steps.length > 0 ? styles.planControls : styles.planControlsFirst}>
+        {tasks.length > 0 && (
+          <label style={styles.focusLabel}>
+            Focus employer task (optional)
+            <select
+              style={styles.select}
+              value={focusId}
+              onChange={(e) => setFocusId(e.target.value)}
+              disabled={busy}
+            >
+              <option value="">All tasks (balanced first week)</option>
+              {tasks.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.title}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        <div style={styles.actions}>
+          <button
+            type="button"
+            style={{ ...styles.primaryBtn, opacity: busy ? 0.5 : 1 }}
+            disabled={busy}
+            onClick={runGenerate}
+          >
+            {plan?.steps?.length ? "Regenerate plan" : "Build my plan"}
+          </button>
+          {plan?.steps?.length ? (
+            <button type="button" style={styles.ghostBtn} disabled={busy} onClick={clearPlan}>
+              Clear
+            </button>
+          ) : null}
+        </div>
+
+        {error && <p style={styles.err}>{error}</p>}
+      </div>
     </div>
   );
 };
@@ -189,6 +191,14 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: "10px",
     lineHeight: 1.45,
     color: "var(--vscode-descriptionForeground)",
+  },
+  planControls: {
+    marginTop: "12px",
+    paddingTop: "10px",
+    borderTop: "1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.08))",
+  },
+  planControlsFirst: {
+    marginTop: "8px",
   },
   focusLabel: {
     display: "flex",
