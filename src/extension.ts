@@ -1,13 +1,12 @@
 import * as vscode from "vscode";
+import { SidebarProvider } from "./panels/SidebarProvider";
 
 export function activate(context: vscode.ExtensionContext): void {
-  const welcome = vscode.commands.registerCommand("onbirdie.welcome", () => {
-    void vscode.window.showInformationMessage(
-      "OnBirdie — your onboarding copilots will live here. Use the command palette to explore as we add agents."
-    );
-  });
+  const sidebarProvider = new SidebarProvider(context.extensionUri);
 
-  context.subscriptions.push(welcome);
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(SidebarProvider.viewType, sidebarProvider)
+  );
 }
 
 export function deactivate(): void {}

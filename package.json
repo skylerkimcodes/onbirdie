@@ -10,11 +10,27 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [
-    "onCommand:onbirdie.welcome"
-  ],
+  "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "onbirdie",
+          "title": "OnBirdie",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "onbirdie": [
+        {
+          "type": "webview",
+          "id": "onbirdie.sidebar",
+          "name": "OnBirdie"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "onbirdie.welcome",
@@ -24,14 +40,24 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
+    "compile": "npm run compile:ext && npm run compile:webview",
+    "compile:ext": "tsc -p ./",
+    "compile:webview": "esbuild src/webview/sidebar/index.tsx --bundle --outfile=out/webview/sidebar.js --loader:.tsx=tsx --loader:.ts=ts",
+    "watch:ext": "tsc -watch -p ./",
+    "watch:webview": "esbuild src/webview/sidebar/index.tsx --bundle --outfile=out/webview/sidebar.js --loader:.tsx=tsx --loader:.ts=ts --watch",
     "package": "vsce package"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^2.22.0",
+    "esbuild": "^0.27.4",
     "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
   }
 }
