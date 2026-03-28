@@ -1,4 +1,11 @@
-import type { MeResponse } from "../../types";
+import type {
+  ChatApiMessage,
+  ChatSendResult,
+  MeResponse,
+  OnboardingProfilePayload,
+  ProfileSaveResult,
+  WorkspaceHintsResult,
+} from "../../types";
 
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void;
@@ -8,8 +15,16 @@ declare function acquireVsCodeApi(): {
 
 export const vscode = acquireVsCodeApi();
 
+/** Local cache for UI; server `profile_completed` is authoritative. */
 export interface WebviewPersistedState {
-  profile?: { name: string; role: string; experience: string };
+  profile?: {
+    name: string;
+    role: string;
+    experience: string;
+    linkedinUrl: string;
+    resumeText: string;
+    skillsSummary: string;
+  };
 }
 
 export function getPersistedState(): WebviewPersistedState | undefined {
@@ -41,6 +56,79 @@ export function requestRegister(
 
 export function requestLogout(): void {
   vscode.postMessage({ type: "auth/logout" });
+}
+
+let saveResolve: ((r: ProfileSaveResult) => void) | undefined;
+let hintsResolve: ((r: WorkspaceHintsResult) => void) | undefined;
+let chatResolve: ((r: ChatSendResult) => void) | undefined;
+export type ResumePickResult =
+  | { text: string }
+  | { cancelled: true }
+  | { error: string };
+
+let resumeResolve: ((r: ResumePickResult) => void) | undefined;
+
+if (typeof window !== "undefined") {
+  window.addEventListener("message", (event: MessageEvent) => {
+    const data = event.data as { type?: string; payload?: unknown };
+    if (!data?.type) {
+      return;
+    }
+    if (data.type === "profile/saveResult" && saveResolve) {
+      const fn = saveResolve;
+      saveResolve = undefined;
+      fn(data.payload as ProfileSaveResult);
+    }
+    if (data.type === "workspace/hints" && hintsResolve) {
+      const fn = hintsResolve;
+      hintsResolve = undefined;
+      fn(data.payload as WorkspaceHintsResult);
+    }
+    if (data.type === "chat/result" && chatResolve) {
+      const fn = chatResolve;
+      chatResolve = undefined;
+      fn(data.payload as ChatSendResult);
+    }
+    if (data.type === "profile/resumePicked" && resumeResolve) {
+      const fn = resumeResolve;
+      resumeResolve = undefined;
+      fn(data.payload as ResumePickResult);
+    }
+  });
+}
+
+export function saveOnboardingProfile(
+  payload: OnboardingProfilePayload
+): Promise<ProfileSaveResult> {
+  return new Promise((resolve) => {
+    saveResolve = resolve;
+    vscode.postMessage({ type: "profile/save", payload });
+  });
+}
+
+export function pickResumeFile(): Promise<ResumePickResult> {
+  return new Promise((resolve) => {
+    resumeResolve = resolve;
+    vscode.postMessage({ type: "profile/pickResume" });
+  });
+}
+
+export function requestWorkspaceHints(highlightPaths: string[]): Promise<WorkspaceHintsResult> {
+  return new Promise((resolve) => {
+    hintsResolve = resolve;
+    vscode.postMessage({ type: "workspace/getHints", payload: { highlightPaths } });
+  });
+}
+
+export function sendChatMessages(messages: ChatApiMessage[]): Promise<ChatSendResult> {
+  return new Promise((resolve) => {
+    chatResolve = resolve;
+    vscode.postMessage({ type: "chat/send", payload: { messages } });
+  });
+}
+
+export function openFilePath(fsPath: string): void {
+  vscode.postMessage({ type: "openFile", payload: fsPath });
 }
 
 export function subscribeToExtension(

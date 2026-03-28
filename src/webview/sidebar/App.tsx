@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import type { MeResponse } from "../../types";
+import React, { useEffect, useMemo, useState } from "react";
+import type { MeResponse, OnboardingProfilePayload } from "../../types";
 import { LoginView } from "./components/LoginView";
 import { ProfileView, Profile } from "./components/ProfileView";
 import { ChatView } from "./components/ChatView";
@@ -7,12 +7,42 @@ import {
   getPersistedState,
   requestLogout,
   requestSession,
+  saveOnboardingProfile,
   setPersistedState,
   subscribeToExtension,
   type ExtensionToWebviewMessage,
 } from "./vscodeBridge";
 
 type Phase = "loading" | "login" | "profile" | "chat";
+
+function profileFromMe(me: MeResponse): Profile {
+  const u = me.user;
+  return {
+    name: u.display_name?.trim() || u.email.split("@")[0] || "",
+    role: u.employee_role ?? "",
+    experience: u.experience_band ?? "",
+    linkedinUrl: u.linkedin_url ?? "",
+    resumeText: "",
+    skillsSummary: u.skills_summary ?? "",
+  };
+}
+
+function mergePersistedLocal(me: MeResponse): Profile {
+  const base = profileFromMe(me);
+  const persisted = getPersistedState()?.profile;
+  if (!persisted) {
+    return base;
+  }
+  return {
+    ...base,
+    name: persisted.name || base.name,
+    role: persisted.role || base.role,
+    experience: persisted.experience || base.experience,
+    linkedinUrl: persisted.linkedinUrl || base.linkedinUrl,
+    resumeText: persisted.resumeText || base.resumeText,
+    skillsSummary: persisted.skillsSummary || base.skillsSummary,
+  };
+}
 
 export const App: React.FC = () => {
   const [phase, setPhase] = useState<Phase>("loading");
@@ -25,9 +55,10 @@ export const App: React.FC = () => {
         const sessionUser = msg.payload.me;
         setMe(sessionUser);
         if (sessionUser) {
-          const persisted = getPersistedState()?.profile;
-          if (persisted) {
-            setProfile(persisted);
+          if (sessionUser.user.profile_completed) {
+            const p = profileFromMe(sessionUser);
+            setProfile(p);
+            setPersistedState({ profile: p });
             setPhase("chat");
           } else {
             setPhase("profile");
@@ -50,18 +81,46 @@ export const App: React.FC = () => {
 
   const handleLoggedIn = (m: MeResponse) => {
     setMe(m);
-    setPhase("profile");
+    if (m.user.profile_completed) {
+      const p = profileFromMe(m);
+      setProfile(p);
+      setPersistedState({ profile: p });
+      setPhase("chat");
+    } else {
+      setPhase("profile");
+    }
   };
 
-  const handleProfileComplete = (p: Profile) => {
-    setProfile(p);
-    setPersistedState({ profile: p });
+  const handleProfileComplete = async (p: Profile) => {
+    const body: OnboardingProfilePayload = {
+      display_name: p.name,
+      employee_role: p.role,
+      experience_band: p.experience,
+      linkedin_url: p.linkedinUrl,
+      resume_text: p.resumeText,
+      skills_summary: p.skillsSummary,
+    };
+    const r = await saveOnboardingProfile(body);
+    if (!r.ok) {
+      throw new Error(r.error);
+    }
+    setMe(r.me);
+    const next = profileFromMe(r.me);
+    setProfile(next);
+    setPersistedState({ profile: next });
     setPhase("chat");
   };
 
   const handleSignOut = () => {
     requestLogout();
   };
+
+  const profileInitial = useMemo(() => {
+    if (!me) {
+      return undefined;
+    }
+    return mergePersistedLocal(me);
+  }, [me]);
 
   if (phase === "loading") {
     return (
@@ -81,14 +140,16 @@ export const App: React.FC = () => {
       <ProfileView
         defaultName={defaultName}
         employerName={me.employer.name}
+        roleOptions={me.employer.role_options ?? []}
+        initial={profileInitial}
         onComplete={handleProfileComplete}
         onSignOut={handleSignOut}
       />
     );
   }
 
-  if (phase === "chat" && profile) {
-    return <ChatView profile={profile} onSignOut={handleSignOut} />;
+  if (phase === "chat" && me && profile) {
+    return <ChatView me={me} profile={profile} onSignOut={handleSignOut} />;
   }
 
   return <LoginView onLoggedIn={handleLoggedIn} />;

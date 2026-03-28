@@ -55,6 +55,7 @@
     "compile": "npm run compile:ext && npm run compile:webview",
     "compile:ext": "tsc -p ./",
     "compile:webview": "esbuild src/webview/sidebar/index.tsx --bundle --outfile=out/webview/sidebar.js --loader:.tsx=tsx --loader:.ts=ts",
+    "watch": "run-p watch:ext watch:webview",
     "watch:ext": "tsc -watch -p ./",
     "watch:webview": "esbuild src/webview/sidebar/index.tsx --bundle --outfile=out/webview/sidebar.js --loader:.tsx=tsx --loader:.ts=ts --watch",
     "package": "vsce package"
@@ -66,9 +67,11 @@
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^2.22.0",
     "esbuild": "^0.27.4",
+    "npm-run-all2": "^8.0.4",
     "typescript": "^5.4.0"
   },
   "dependencies": {
+    "pdf-parse": "1.1.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   }

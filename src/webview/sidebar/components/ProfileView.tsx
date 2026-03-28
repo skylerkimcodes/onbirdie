@@ -1,9 +1,12 @@
 import React, { useState } from "react";
+import { pickResumeFile } from "../vscodeBridge";
 
 interface Props {
   defaultName?: string;
   employerName?: string;
-  onComplete: (profile: Profile) => void;
+  roleOptions: string[];
+  initial?: Partial<Profile>;
+  onComplete: (profile: Profile) => Promise<void>;
   onSignOut?: () => void;
 }
 
@@ -11,28 +14,87 @@ export interface Profile {
   name: string;
   role: string;
   experience: string;
+  linkedinUrl: string;
+  resumeText: string;
+  skillsSummary: string;
 }
 
-const ROLES = ["Frontend Engineer", "Backend Engineer", "Full Stack Engineer", "DevOps / Infra", "Mobile Engineer", "Data Engineer", "Other"];
+const FALLBACK_ROLES = [
+  "Frontend Engineer",
+  "Backend Engineer",
+  "Full Stack Engineer",
+  "DevOps / Infra",
+  "Mobile Engineer",
+  "Data Engineer",
+  "Other",
+];
+
 const EXPERIENCE = ["< 1 year", "1–3 years", "3–5 years", "5+ years"];
 
 export const ProfileView: React.FC<Props> = ({
   defaultName = "",
   employerName,
+  roleOptions,
+  initial,
   onComplete,
   onSignOut,
 }) => {
-  const [name, setName] = useState(defaultName);
-  const [role, setRole] = useState("");
-  const [experience, setExperience] = useState("");
+  const [name, setName] = useState(initial?.name ?? defaultName);
+  const [role, setRole] = useState(initial?.role ?? "");
+  const [experience, setExperience] = useState(initial?.experience ?? "");
+  const [linkedinUrl, setLinkedinUrl] = useState(initial?.linkedinUrl ?? "");
+  const [resumeText, setResumeText] = useState(initial?.resumeText ?? "");
+  const [skillsSummary, setSkillsSummary] = useState(initial?.skillsSummary ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | undefined>();
 
-  const canSubmit = name.trim() && role && experience;
+  const roles = roleOptions.length > 0 ? roleOptions : FALLBACK_ROLES;
+  const hasLinkedIn = linkedinUrl.trim().length > 0;
+  const hasResume = resumeText.trim().length > 0;
+  const hasBackground = hasLinkedIn || hasResume;
+  const canSubmit = Boolean(name.trim() && role && experience && hasBackground);
+
+  const onPickResume = async () => {
+    const result = await pickResumeFile();
+    if ("cancelled" in result && result.cancelled) {
+      return;
+    }
+    if ("error" in result) {
+      setError(result.error);
+      return;
+    }
+    if ("text" in result) {
+      setResumeText(result.text);
+    }
+  };
+
+  const submit = async () => {
+    if (!canSubmit || saving) {
+      return;
+    }
+    setError(undefined);
+    setSaving(true);
+    try {
+      await onComplete({
+        name: name.trim(),
+        role,
+        experience,
+        linkedinUrl: linkedinUrl.trim(),
+        resumeText,
+        skillsSummary: skillsSummary.trim(),
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save your profile.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div style={styles.container}>
       <div style={styles.header}>
         <div style={styles.headerTop}>
-          <span style={styles.step}>Step 1 of 2</span>
+          <span style={styles.step}>Your profile</span>
           {onSignOut && (
             <button type="button" style={styles.linkBtn} onClick={onSignOut}>
               Sign out
@@ -42,8 +104,8 @@ export const ProfileView: React.FC<Props> = ({
         <h2 style={styles.title}>Tell us about yourself</h2>
         <p style={styles.subtitle}>
           {employerName
-            ? `Signed in with ${employerName}. OnBirdie uses your answers to personalize onboarding.`
-            : "OnBirdie uses this to personalize your onboarding experience."}
+            ? `Signed in with ${employerName}. We use this to tailor onboarding and highlight the right parts of your workspace.`
+            : "We use this to tailor onboarding and highlight the right parts of your workspace."}
         </p>
       </div>
 
@@ -55,15 +117,18 @@ export const ProfileView: React.FC<Props> = ({
           placeholder="e.g. Alex"
           value={name}
           onChange={(e) => setName(e.target.value)}
+          disabled={saving}
         />
 
         <label style={styles.label}>Your role</label>
         <div style={styles.chips}>
-          {ROLES.map((r) => (
+          {roles.map((r) => (
             <button
               key={r}
+              type="button"
               style={{ ...styles.chip, ...(role === r ? styles.chipActive : {}) }}
               onClick={() => setRole(r)}
+              disabled={saving}
             >
               {r}
             </button>
@@ -72,24 +137,72 @@ export const ProfileView: React.FC<Props> = ({
 
         <label style={styles.label}>Years of experience</label>
         <div style={styles.chips}>
-          {EXPERIENCE.map((e) => (
+          {EXPERIENCE.map((ex) => (
             <button
-              key={e}
-              style={{ ...styles.chip, ...(experience === e ? styles.chipActive : {}) }}
-              onClick={() => setExperience(e)}
+              key={ex}
+              type="button"
+              style={{ ...styles.chip, ...(experience === ex ? styles.chipActive : {}) }}
+              onClick={() => setExperience(ex)}
+              disabled={saving}
             >
-              {e}
+              {ex}
             </button>
           ))}
         </div>
+
+        <label style={styles.label}>LinkedIn or resume</label>
+        <p style={styles.hint}>
+          Add <strong>either</strong> your LinkedIn URL <strong>or</strong> resume text (paste below or upload a{" "}
+          <strong>PDF</strong> or text file).
+        </p>
+        <label style={styles.subLabel}>LinkedIn profile URL</label>
+        <input
+          style={styles.input}
+          type="url"
+          placeholder="https://www.linkedin.com/in/…"
+          value={linkedinUrl}
+          onChange={(e) => setLinkedinUrl(e.target.value)}
+          disabled={saving}
+        />
+
+        <label style={styles.subLabel}>Resume (paste or PDF / text file)</label>
+        <div style={styles.resumeRow}>
+          <button type="button" style={styles.secondaryBtn} onClick={onPickResume} disabled={saving}>
+            Choose PDF or text file…
+          </button>
+          {resumeText.trim() ? (
+            <span style={styles.resumeMeta}>{resumeText.length.toLocaleString()} characters</span>
+          ) : null}
+        </div>
+        <textarea
+          style={styles.textarea}
+          placeholder="Or paste resume text here (optional if LinkedIn is filled in)"
+          value={resumeText}
+          onChange={(e) => setResumeText(e.target.value.slice(0, 100_000))}
+          disabled={saving}
+          rows={5}
+        />
+
+        <label style={styles.label}>Skills & highlights (optional)</label>
+        <textarea
+          style={styles.textarea}
+          placeholder="e.g. TypeScript, React, distributed systems — comma or short bullets"
+          value={skillsSummary}
+          onChange={(e) => setSkillsSummary(e.target.value.slice(0, 4000))}
+          disabled={saving}
+          rows={3}
+        />
       </div>
 
+      {error && <p style={styles.error}>{error}</p>}
+
       <button
-        style={{ ...styles.button, opacity: canSubmit ? 1 : 0.4 }}
-        disabled={!canSubmit}
-        onClick={() => onComplete({ name: name.trim(), role, experience })}
+        type="button"
+        style={{ ...styles.button, opacity: canSubmit && !saving ? 1 : 0.4 }}
+        disabled={!canSubmit || saving}
+        onClick={submit}
       >
-        Continue →
+        {saving ? "Saving…" : "Continue →"}
       </button>
     </div>
   );
@@ -152,6 +265,18 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--vscode-foreground)",
     marginTop: "4px",
   },
+  subLabel: {
+    fontSize: "11px",
+    fontWeight: 600,
+    color: "var(--vscode-descriptionForeground)",
+    marginTop: "2px",
+  },
+  hint: {
+    fontSize: "11px",
+    color: "var(--vscode-descriptionForeground)",
+    lineHeight: 1.45,
+    margin: "0 0 4px 0",
+  },
   input: {
     background: "var(--vscode-input-background)",
     color: "var(--vscode-input-foreground)",
@@ -162,6 +287,39 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: "var(--vscode-font-family)",
     outline: "none",
     width: "100%",
+  },
+  textarea: {
+    background: "var(--vscode-input-background)",
+    color: "var(--vscode-input-foreground)",
+    border: "1px solid var(--vscode-input-border, transparent)",
+    borderRadius: "4px",
+    padding: "8px 10px",
+    fontSize: "12px",
+    fontFamily: "var(--vscode-font-family)",
+    outline: "none",
+    width: "100%",
+    resize: "vertical",
+    lineHeight: 1.45,
+  },
+  resumeRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    flexWrap: "wrap",
+  },
+  secondaryBtn: {
+    padding: "5px 12px",
+    fontSize: "12px",
+    borderRadius: "4px",
+    border: "1px solid var(--vscode-button-secondaryBackground, #555)",
+    background: "transparent",
+    color: "var(--vscode-foreground)",
+    cursor: "pointer",
+    fontFamily: "var(--vscode-font-family)",
+  },
+  resumeMeta: {
+    fontSize: "11px",
+    color: "var(--vscode-descriptionForeground)",
   },
   chips: {
     display: "flex",
@@ -193,5 +351,10 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: "13px",
     fontFamily: "var(--vscode-font-family)",
     width: "100%",
+  },
+  error: {
+    fontSize: "12px",
+    color: "var(--vscode-errorForeground, #f14c4c)",
+    margin: "0",
   },
 };

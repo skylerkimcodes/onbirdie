@@ -1,6 +1,12 @@
 import * as vscode from "vscode";
 import { apiRequest } from "./api";
-import type { MeResponse } from "./types";
+import type {
+  ChatApiMessage,
+  ChatSendResult,
+  MeResponse,
+  OnboardingProfilePayload,
+  ProfileSaveResult,
+} from "./types";
 
 const ACCESS_TOKEN_KEY = "onbirdie.accessToken";
 
@@ -8,12 +14,29 @@ export type AuthResult =
   | { ok: true; me: MeResponse }
   | { ok: false; error: string };
 
+function stringifyDetail(detail: unknown): string {
+  if (typeof detail === "string") {
+    return detail;
+  }
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (item && typeof item === "object" && "msg" in item) {
+          return String((item as { msg: unknown }).msg);
+        }
+        return JSON.stringify(item);
+      })
+      .join(" ");
+  }
+  return "Request failed";
+}
+
 async function parseErrorDetail(res: Response): Promise<string> {
   let detail = res.statusText;
   try {
     const err = (await res.json()) as { detail?: unknown };
-    if (typeof err.detail === "string") {
-      detail = err.detail;
+    if (err.detail !== undefined) {
+      detail = stringifyDetail(err.detail);
     }
   } catch {
     /* ignore */
@@ -105,4 +128,44 @@ export async function signOut(
   if (!options?.silent) {
     void vscode.window.showInformationMessage("OnBirdie: signed out.");
   }
+}
+
+export async function saveOnboardingProfile(
+  secrets: vscode.SecretStorage,
+  body: OnboardingProfilePayload
+): Promise<ProfileSaveResult> {
+  const token = await getAccessToken(secrets);
+  if (!token) {
+    return { ok: false, error: "Not signed in." };
+  }
+  const res = await apiRequest("PATCH", "/api/v1/me/profile", { token, body });
+  if (res.status === 401) {
+    await setAccessToken(secrets, undefined);
+    return { ok: false, error: "Session expired. Sign in again." };
+  }
+  if (!res.ok) {
+    return { ok: false, error: await parseErrorDetail(res) };
+  }
+  const me = (await res.json()) as MeResponse;
+  return { ok: true, me };
+}
+
+export async function sendChat(
+  secrets: vscode.SecretStorage,
+  messages: ChatApiMessage[]
+): Promise<ChatSendResult> {
+  const token = await getAccessToken(secrets);
+  if (!token) {
+    return { ok: false, error: "Not signed in." };
+  }
+  const res = await apiRequest("POST", "/api/v1/chat", { token, body: { messages } });
+  if (res.status === 401) {
+    await setAccessToken(secrets, undefined);
+    return { ok: false, error: "Session expired. Sign in again." };
+  }
+  if (!res.ok) {
+    return { ok: false, error: await parseErrorDetail(res) };
+  }
+  const data = (await res.json()) as { message: string };
+  return { ok: true, message: data.message };
 }

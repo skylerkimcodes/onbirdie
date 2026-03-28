@@ -3,8 +3,12 @@ import {
   fetchMe,
   loginWithCredentials,
   registerWithCredentials,
+  saveOnboardingProfile,
+  sendChat,
   signOut,
 } from "../auth";
+import type { ChatApiMessage, OnboardingProfilePayload } from "../types";
+import { extractResumePlainText } from "../resumeText";
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "onbirdie.sidebar";
@@ -86,6 +90,63 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
               vscode.Uri.file(message.payload as string)
             );
             break;
+          case "profile/save": {
+            const body = message.payload as OnboardingProfilePayload;
+            const result = await saveOnboardingProfile(secrets, body);
+            wv.postMessage({ type: "profile/saveResult", payload: result });
+            break;
+          }
+          case "profile/pickResume": {
+            const uris = await vscode.window.showOpenDialog({
+              canSelectMany: false,
+              openLabel: "Use as resume",
+              filters: {
+                "PDF": ["pdf"],
+                "Text": ["txt", "md", "markdown", "csv"],
+                "All files": ["*"],
+              },
+            });
+            if (uris?.[0]) {
+              try {
+                const buf = await vscode.workspace.fs.readFile(uris[0]);
+                const text = await extractResumePlainText(uris[0], buf);
+                wv.postMessage({ type: "profile/resumePicked", payload: { text } });
+              } catch (e) {
+                const message =
+                  e instanceof Error ? e.message : "Could not read this file as a resume.";
+                wv.postMessage({ type: "profile/resumePicked", payload: { error: message } });
+              }
+            } else {
+              wv.postMessage({ type: "profile/resumePicked", payload: { cancelled: true } });
+            }
+            break;
+          }
+          case "chat/send": {
+            const p = message.payload as { messages?: ChatApiMessage[] };
+            const msgs = p?.messages ?? [];
+            const result = await sendChat(secrets, msgs);
+            wv.postMessage({ type: "chat/result", payload: result });
+            break;
+          }
+          case "workspace/getHints": {
+            try {
+              const p = message.payload as { highlightPaths?: string[] };
+              const files = await collectWorkspaceHints(p?.highlightPaths ?? [], 28);
+              wv.postMessage({
+                type: "workspace/hints",
+                payload: { ok: true as const, files },
+              });
+            } catch (e) {
+              wv.postMessage({
+                type: "workspace/hints",
+                payload: {
+                  ok: false as const,
+                  error: e instanceof Error ? e.message : "Could not scan workspace",
+                },
+              });
+            }
+            break;
+          }
           default:
             break;
         }
@@ -136,4 +197,56 @@ function getNonce(): string {
     text += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return text;
+}
+
+function highlightPathToGlob(hp: string): string {
+  const t = hp.trim();
+  if (!t) {
+    return "";
+  }
+  if (t.endsWith("/")) {
+    const base = t.replace(/\/+$/, "");
+    return `${base}/**/*`;
+  }
+  return t;
+}
+
+async function collectWorkspaceHints(
+  highlightPaths: string[],
+  maxTotal: number
+): Promise<{ path: string; label: string }[]> {
+  const folders = vscode.workspace.workspaceFolders;
+  if (!folders?.length || maxTotal <= 0) {
+    return [];
+  }
+  const root = folders[0];
+  const exclude =
+    "**/{node_modules,.git,.venv,venv,dist,build,.next,coverage}/**";
+  const results: { path: string; label: string }[] = [];
+  const seen = new Set<string>();
+
+  for (const hp of highlightPaths) {
+    const glob = highlightPathToGlob(hp);
+    if (!glob) {
+      continue;
+    }
+    const pattern = new vscode.RelativePattern(root, glob);
+    const uris = await vscode.workspace.findFiles(
+      pattern,
+      exclude,
+      Math.max(0, maxTotal - results.length + 8)
+    );
+    for (const uri of uris) {
+      const label = vscode.workspace.asRelativePath(uri, false);
+      if (seen.has(label)) {
+        continue;
+      }
+      seen.add(label);
+      results.push({ path: uri.fsPath, label });
+      if (results.length >= maxTotal) {
+        return results;
+      }
+    }
+  }
+  return results;
 }
