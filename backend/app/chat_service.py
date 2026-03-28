@@ -14,6 +14,13 @@ def _k2_configured() -> bool:
     return bool(settings.k2_base_url.strip() and settings.k2_api_key.strip())
 
 
+def _k2_base_url() -> str:
+    """Strip trailing /chat/completions so ChatOpenAI (which appends it) doesn't double the path."""
+    import re
+    url = settings.k2_base_url.strip().rstrip("/")
+    return re.sub(r"/chat/completions$", "", url)
+
+
 def _openai_messages_to_lc(messages: list[dict[str, str]]) -> list[BaseMessage]:
     out: list[BaseMessage] = []
     for m in messages:
@@ -35,7 +42,7 @@ async def _chat_via_k2(
     if not _k2_configured():
         raise RuntimeError("K2 is not configured (set K2_BASE_URL and K2_API_KEY)")
     llm = ChatOpenAI(
-        base_url=settings.k2_base_url.rstrip("/"),
+        base_url=_k2_base_url(),
         api_key=settings.k2_api_key,
         model=(settings.k2_model or "k2-think-v2").strip(),
         temperature=temperature,

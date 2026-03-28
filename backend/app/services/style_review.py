@@ -211,11 +211,17 @@ def _postprocess_response(result: StyleReviewResponse, *, lang: str) -> StyleRev
     return result.model_copy(update={"issues": filtered, "summary": summary})
 
 
+def _k2_base_url() -> str:
+    import re
+    url = settings.k2_base_url.strip().rstrip("/")
+    return re.sub(r"/chat/completions$", "", url)
+
+
 async def _complete_with_k2(*, system: str, user_block: str) -> str:
     if not settings.k2_base_url.strip() or not settings.k2_api_key.strip():
         raise RuntimeError("K2 is not configured (set K2_BASE_URL and K2_API_KEY)")
     llm = ChatOpenAI(
-        base_url=settings.k2_base_url.rstrip("/"),
+        base_url=_k2_base_url(),
         api_key=settings.k2_api_key,
         model=settings.k2_model,
         temperature=0.2,

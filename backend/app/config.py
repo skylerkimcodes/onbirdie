@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     # K2: preferred for chat, plan JSON, and tour when K2_BASE_URL + K2_API_KEY are set.
     k2_base_url: str = ""
     k2_api_key: str = ""
-    k2_model: str = "k2-think-v2"
+    k2_model: str = "MBZUAI-IFM/K2-Think-v2"
     openai_api_key: str = ""
     openai_base_url: str = ""
     # When chat falls back to Lava (no K2): model id must match upstream.
