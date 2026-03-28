@@ -3,3 +3,11 @@ out/
 *.vsix
 .DS_Store
 .vscode-test/
+
+# Backend
+backend/.venv/
+backend/**/__pycache__/
+*.pyc
+
+.env
+.env.local
