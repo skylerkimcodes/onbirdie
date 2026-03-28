@@ -14,6 +14,7 @@ import {
 } from "../vscodeBridge";
 import { WorkspaceGuidePanel } from "../components/WorkspaceGuidePanel";
 import { SidebarTabBar, type SidebarTabId } from "../components/SidebarTabBar";
+import { TourTab } from "../components/TourTab";
 
 interface Message {
   id: number;
@@ -40,11 +41,11 @@ function buildWelcome(me: MeResponse, profile: Profile): string {
   if (me.user.has_resume && !skillsBlock) {
     skillsBlock = `\n\nWe saved your resume text so I can reference your background when it helps.`;
   }
-  return `Hey ${name}! I'm OnBirdie, your onboarding agent. I know you're a **${role}** — I'll tailor guidance to that.${skillsBlock}\n\nHere's what I can help you with:\n• **Guide tab** — suggested files, employer tasks, and your checklist plan\n• **Codebase tour** — walk through what matters for your role\n• **Style review** — staged changes vs your employer style guide (header button)\n• **Q&A** — ask about the repo or your tasks (this chat)\n\nWhat would you like to start with?`;
+  return `Hey ${name}! I'm OnBirdie, your onboarding agent. I know you're a **${role}** — I'll tailor guidance to that.${skillsBlock}\n\nHere's what I can help you with:\n• **Guide tab** — suggested files, employer tasks, and your checklist plan\n• **Q&A** — ask about the repo or your tasks (this chat)\n\nWhat would you like to start with?`;
 }
 
 export const ChatView: React.FC<Props> = ({ me, profile, onMeUpdated, onSignOut }) => {
-  const [activeTab, setActiveTab] = useState<SidebarTabId>("chat");
+  const [activeTab, setActiveTab] = useState<SidebarTabId>("tour");
   const [messages, setMessages] = useState<Message[]>([
     { id: 0, role: "agent", text: buildWelcome(me, profile) },
   ]);
@@ -186,11 +187,7 @@ export const ChatView: React.FC<Props> = ({ me, profile, onMeUpdated, onSignOut 
       <SidebarTabBar active={activeTab} onChange={setActiveTab} />
 
       {activeTab === "chat" ? (
-        <div
-          style={styles.tabPanel}
-          role="tabpanel"
-          aria-labelledby="onbirdie-tab-chat"
-        >
+        <div style={styles.tabPanel} role="tabpanel" aria-labelledby="onbirdie-tab-chat">
           <div style={styles.messages}>
             {messages.map((msg) => (
               <div key={msg.id} style={msg.role === "user" ? styles.userRow : styles.agentRow}>
@@ -232,6 +229,10 @@ export const ChatView: React.FC<Props> = ({ me, profile, onMeUpdated, onSignOut 
               ↑
             </button>
           </div>
+        </div>
+      ) : activeTab === "tour" ? (
+        <div style={styles.tabPanel} role="tabpanel" aria-labelledby="onbirdie-tab-tour">
+          <TourTab userRole={profile.role} />
         </div>
       ) : (
         <WorkspaceGuidePanel

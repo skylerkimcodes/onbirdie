@@ -1,6 +1,6 @@
 import React from "react";
 
-export type SidebarTabId = "chat" | "guide";
+export type SidebarTabId = "chat" | "guide" | "tour";
 
 interface TabDef {
   id: SidebarTabId;
@@ -10,6 +10,7 @@ interface TabDef {
 const TABS: TabDef[] = [
   { id: "chat", label: "Chat" },
   { id: "guide", label: "Guide" },
+  { id: "tour", label: "Tour" },
 ];
 
 interface Props {

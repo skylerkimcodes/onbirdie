@@ -4,7 +4,7 @@ import {
   clearOnboardingPlan,
   fetchMe,
   generateOnboardingPlan,
-  getAccessToken,
+  generateTour,
   loginWithCredentials,
   patchPlanStep,
   registerWithCredentials,
@@ -21,7 +21,7 @@ import { runStyleReviewForDiff, writeStyleReviewOutput } from "../styleReviewCor
 export class SidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "onbirdie.sidebar";
 
-  private _view: vscode.WebviewView | undefined;
+  private _tourDecoration: vscode.TextEditorDecorationType | undefined;
 
   constructor(private readonly _context: vscode.ExtensionContext) {}
 
@@ -160,6 +160,59 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           case "plan/clear": {
             const result = await clearOnboardingPlan(secrets);
             wv.postMessage({ type: "plan/mutResult", payload: result });
+            break;
+          }
+          case "tour/generate": {
+            const p = message.payload as { userRole?: string } | undefined;
+            const userRole = p?.userRole ?? "";
+            try {
+              const { files, pathMap } = await this._collectTourFiles();
+              const result = await generateTour(secrets, files, userRole);
+              if (!result.ok) {
+                wv.postMessage({ type: "tour/result", payload: { ok: false, error: result.error } });
+                break;
+              }
+              const steps = result.rawSteps.map((s) => ({
+                ...s,
+                absolutePath: pathMap.get(s.file) ?? "",
+              }));
+              wv.postMessage({ type: "tour/result", payload: { ok: true, steps } });
+            } catch (e) {
+              wv.postMessage({
+                type: "tour/result",
+                payload: { ok: false, error: e instanceof Error ? e.message : "Tour generation failed" },
+              });
+            }
+            break;
+          }
+          case "tour/goto": {
+            const p = message.payload as { absolutePath?: string; startLine?: number; endLine?: number } | undefined;
+            if (!p?.absolutePath) break;
+            if (!this._tourDecoration) {
+              this._tourDecoration = vscode.window.createTextEditorDecorationType({
+                isWholeLine: true,
+                backgroundColor: new vscode.ThemeColor("editor.findMatchHighlightBackground"),
+                borderWidth: "0 0 0 3px",
+                borderStyle: "solid",
+                borderColor: new vscode.ThemeColor("editorInfo.foreground"),
+              });
+            }
+            try {
+              const uri = vscode.Uri.file(p.absolutePath);
+              const doc = await vscode.workspace.openTextDocument(uri);
+              const editor = await vscode.window.showTextDocument(doc, {
+                viewColumn: vscode.ViewColumn.One,
+                preserveFocus: true,
+              });
+              const startLine = Math.max(0, (p.startLine ?? 1) - 1);
+              const endLine = Math.max(startLine, (p.endLine ?? startLine + 1) - 1);
+              const range = new vscode.Range(startLine, 0, endLine, Number.MAX_SAFE_INTEGER);
+              editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+              for (const e of vscode.window.visibleTextEditors) {
+                e.setDecorations(this._tourDecoration, []);
+              }
+              editor.setDecorations(this._tourDecoration, [{ range }]);
+            } catch { /* ignore navigation errors */ }
             break;
           }
           case "workspace/getHints": {
@@ -327,6 +380,55 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;
+  }
+
+  private async _collectTourFiles(): Promise<{
+    files: { path: string; content: string }[];
+    pathMap: Map<string, string>;
+  }> {
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders?.length) {
+      return this._getSampleProjectFiles();
+    }
+    const root = folders[0];
+    const exclude = "**/{node_modules,.git,.venv,venv,dist,build,.next,coverage}/**";
+    const uris = await vscode.workspace.findFiles(
+      new vscode.RelativePattern(root, "**/*.{js,ts,tsx,jsx,py,go,java,rb}"),
+      exclude,
+      15
+    );
+    const files: { path: string; content: string }[] = [];
+    const pathMap = new Map<string, string>();
+    for (const uri of uris) {
+      const rel = vscode.workspace.asRelativePath(uri, false);
+      try {
+        const buf = await vscode.workspace.fs.readFile(uri);
+        const content = Buffer.from(buf).toString("utf8").slice(0, 4_000);
+        files.push({ path: rel, content });
+        pathMap.set(rel, uri.fsPath);
+      } catch { /* skip unreadable files */ }
+    }
+    return files.length > 0 ? { files, pathMap } : this._getSampleProjectFiles();
+  }
+
+  private async _getSampleProjectFiles(): Promise<{
+    files: { path: string; content: string }[];
+    pathMap: Map<string, string>;
+  }> {
+    const names = ["index.js", "routes/users.js", "models/user.js", "middleware/auth.js"];
+    const sampleRoot = vscode.Uri.joinPath(this._context.extensionUri, "sample-project");
+    const files: { path: string; content: string }[] = [];
+    const pathMap = new Map<string, string>();
+    for (const name of names) {
+      const uri = vscode.Uri.joinPath(sampleRoot, ...name.split("/"));
+      try {
+        const buf = await vscode.workspace.fs.readFile(uri);
+        const content = Buffer.from(buf).toString("utf8");
+        files.push({ path: name, content });
+        pathMap.set(name, uri.fsPath);
+      } catch { /* skip */ }
+    }
+    return { files, pathMap };
   }
 }
 
