@@ -1,4 +1,4 @@
-# OnBirdie
+# OnBirdie 🐦
 
 **OnBirdie** is a VS Code extension paired with a FastAPI backend that helps new engineers onboard faster: personalized chat, a role-aware codebase tour, guided onboarding plans, and style review against your team’s conventions. Employers configure join codes, cohorts, and style guides; employees sign in and work entirely inside the editor.
 
