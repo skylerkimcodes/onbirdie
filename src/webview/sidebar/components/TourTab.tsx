@@ -12,12 +12,14 @@ export const TourTab: React.FC<Props> = ({ userRole }) => {
   const [activeIndex, setActiveIndex] = useState(0);
   const [error, setError] = useState<string | undefined>();
 
-  useEffect(() => { void generate(); }, [userRole]);
+  useEffect(() => {
+    void runTour(false);
+  }, [userRole]);
 
-  const generate = async () => {
+  const runTour = async (force: boolean) => {
     setStatus("loading");
     setError(undefined);
-    const result = await requestTourGenerate(userRole);
+    const result = await requestTourGenerate(userRole, { force });
     if (result.ok) {
       setSteps(result.steps);
       setActiveIndex(0);
@@ -58,7 +60,7 @@ export const TourTab: React.FC<Props> = ({ userRole }) => {
           {status === "error" && error && (
             <p style={styles.errorText}>{error}</p>
           )}
-          <button type="button" style={styles.generateBtn} onClick={generate}>
+          <button type="button" style={styles.generateBtn} onClick={() => void runTour(true)}>
             {status === "error" ? "Try again" : "Generate Tour"}
           </button>
         </div>
@@ -81,29 +83,7 @@ export const TourTab: React.FC<Props> = ({ userRole }) => {
 
   return (
     <div style={styles.container}>
-      {/* Step counter + nav */}
-      <div style={styles.navBar}>
-        <button
-          type="button"
-          style={{ ...styles.navBtn, opacity: activeIndex === 0 ? 0.3 : 1 }}
-          disabled={activeIndex === 0}
-          onClick={() => goTo(activeIndex - 1)}
-        >
-          ‹ Prev
-        </button>
-        <span style={styles.counter}>
-          {activeIndex + 1} / {steps.length}
-        </span>
-        <button
-          type="button"
-          style={{ ...styles.navBtn, opacity: activeIndex === steps.length - 1 ? 0.3 : 1 }}
-          disabled={activeIndex === steps.length - 1}
-          onClick={() => goTo(activeIndex + 1)}
-        >
-          Next ›
-        </button>
-      </div>
-
+      <div style={styles.tourBody}>
       {/* Dot indicators */}
       <div style={styles.dots}>
         {steps.map((_, i) => (
@@ -164,6 +144,30 @@ export const TourTab: React.FC<Props> = ({ userRole }) => {
       }}>
         ↺ New tour
       </button>
+      </div>
+
+      {/* Step counter + nav — pinned to bottom of tour panel */}
+      <div style={styles.navBar}>
+        <button
+          type="button"
+          style={{ ...styles.navBtn, opacity: activeIndex === 0 ? 0.3 : 1 }}
+          disabled={activeIndex === 0}
+          onClick={() => goTo(activeIndex - 1)}
+        >
+          ‹ Prev
+        </button>
+        <span style={styles.counter}>
+          {activeIndex + 1} / {steps.length}
+        </span>
+        <button
+          type="button"
+          style={{ ...styles.navBtn, opacity: activeIndex === steps.length - 1 ? 0.3 : 1 }}
+          disabled={activeIndex === steps.length - 1}
+          onClick={() => goTo(activeIndex + 1)}
+        >
+          Next ›
+        </button>
+      </div>
     </div>
   );
 };
@@ -174,9 +178,18 @@ const styles: Record<string, React.CSSProperties> = {
     minHeight: 0,
     display: "flex",
     flexDirection: "column",
-    overflowY: "auto",
+    overflow: "hidden",
     padding: "12px",
+    paddingBottom: "8px",
+  },
+  tourBody: {
+    flex: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    display: "flex",
+    flexDirection: "column",
     gap: "10px",
+    paddingBottom: "4px",
   },
   emptyState: {
     display: "flex",
@@ -221,6 +234,9 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "space-between",
     flexShrink: 0,
+    paddingTop: "10px",
+    marginTop: "4px",
+    borderTop: "1px solid var(--vscode-widget-border, rgba(255,255,255,0.12))",
   },
   navBtn: {
     background: "none",
@@ -347,6 +363,7 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     fontSize: "11px",
     fontFamily: "var(--vscode-font-family)",
-    marginTop: "4px",
+    marginTop: "2px",
+    flexShrink: 0,
   },
 };

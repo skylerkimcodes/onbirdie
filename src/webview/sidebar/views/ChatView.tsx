@@ -1,9 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import type {
-  MeResponse,
-  StyleReviewOutcome,
-  WorkspaceHintFile,
-} from "../../../lib/types";
+import type { MeResponse, StyleReviewOutcome, WorkspaceHintFile } from "../../../lib/types";
 import { Profile } from "./ProfileView";
 import {
   requestStyleReview,
@@ -14,6 +10,7 @@ import {
 } from "../vscodeBridge";
 import { WorkspaceGuidePanel } from "../components/WorkspaceGuidePanel";
 import { SidebarTabBar, type SidebarTabId } from "../components/SidebarTabBar";
+import { StyleReviewTab } from "../components/StyleReviewTab";
 import { TourTab } from "../components/TourTab";
 
 interface Message {
@@ -22,7 +19,7 @@ interface Message {
   text: string;
 }
 
-interface Props {
+interface ChatViewProps {
   me: MeResponse;
   profile: Profile;
   onMeUpdated: (me: MeResponse) => void;
@@ -41,10 +38,10 @@ function buildWelcome(me: MeResponse, profile: Profile): string {
   if (me.user.has_resume && !skillsBlock) {
     skillsBlock = `\n\nWe saved your resume text so I can reference your background when it helps.`;
   }
-  return `Hey ${name}! I'm OnBirdie, your onboarding agent. I know you're a **${role}** — I'll tailor guidance to that.${skillsBlock}\n\nHere's what I can help you with:\n• **Chat tab** — ask about the repo or your tasks\n• **Guide tab** — suggested files, employer tasks, and your XP onboarding run\n• **Tour tab** — walk the codebase for your role\n\nWhat would you like to start with?`;
+  return `Hey ${name}! I'm OnBirdie, your onboarding agent. I know you're a **${role}** — I'll tailor guidance to that.${skillsBlock}\n\nHere's what I can help you with:\n• **Chat** (below) — ask about the repo or your tasks\n• **Guide** — suggested files, employer tasks, and your onboarding run\n• **Tour** — walk the codebase for your role\n• **Style** — review staged changes against your style guide\n\nWhat would you like to start with?`;
 }
 
-export const ChatView: React.FC<Props> = ({ me, profile, onMeUpdated, onSignOut }) => {
+export const ChatView: React.FC<ChatViewProps> = ({ me, profile, onMeUpdated, onSignOut }) => {
   const [activeTab, setActiveTab] = useState<SidebarTabId>("tour");
   const [messages, setMessages] = useState<Message[]>([
     { id: 0, role: "agent", text: buildWelcome(me, profile) },
@@ -53,8 +50,8 @@ export const ChatView: React.FC<Props> = ({ me, profile, onMeUpdated, onSignOut 
   const [isTyping, setIsTyping] = useState(false);
   const [hints, setHints] = useState<WorkspaceHintFile[] | null>(null);
   const [hintsNote, setHintsNote] = useState<string | undefined>();
-  const [styleBusy, setStyleBusy] = useState(false);
-  const [styleOutcome, setStyleOutcome] = useState<StyleReviewOutcome | null>(null);
+  const [styleReviewBusy, setStyleReviewBusy] = useState(false);
+  const [styleReviewOutcome, setStyleReviewOutcome] = useState<StyleReviewOutcome | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const highlightKey = me.employer.highlight_paths.join("\0");
@@ -62,15 +59,15 @@ export const ChatView: React.FC<Props> = ({ me, profile, onMeUpdated, onSignOut 
   useEffect(() => {
     return subscribeToExtension((msg: ExtensionToWebviewMessage) => {
       if (msg.type === "styleReview/result") {
-        setStyleBusy(false);
-        setStyleOutcome(msg.payload);
+        setStyleReviewBusy(false);
+        setStyleReviewOutcome(msg.payload);
       }
     });
   }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isTyping, styleBusy, styleOutcome]);
+  }, [messages, isTyping]);
 
   useEffect(() => {
     let cancelled = false;
@@ -143,9 +140,9 @@ export const ChatView: React.FC<Props> = ({ me, profile, onMeUpdated, onSignOut 
     }
   };
 
-  const runStyleReview = () => {
-    setStyleBusy(true);
-    setStyleOutcome(null);
+  const startStyleReview = () => {
+    setStyleReviewBusy(true);
+    setStyleReviewOutcome(null);
     requestStyleReview();
   };
 
@@ -158,15 +155,6 @@ export const ChatView: React.FC<Props> = ({ me, profile, onMeUpdated, onSignOut 
           <div style={styles.headerSub}>{profile.role}</div>
         </div>
         <div style={styles.headerActions}>
-          <button
-            type="button"
-            style={styles.styleBtn}
-            onClick={runStyleReview}
-            disabled={styleBusy}
-            title="Compare staged files to your employer style guide (git add first)"
-          >
-            {styleBusy ? "Reviewing…" : "Style review"}
-          </button>
           {onSignOut && (
             <button type="button" style={styles.signOut} onClick={onSignOut}>
               Sign out
@@ -177,16 +165,31 @@ export const ChatView: React.FC<Props> = ({ me, profile, onMeUpdated, onSignOut 
 
       <SidebarTabBar active={activeTab} onChange={setActiveTab} />
 
-      {activeTab === "chat" ? (
-        <div style={styles.tabPanel} role="tabpanel" aria-labelledby="onbirdie-tab-chat">
-          {(styleBusy || styleOutcome) && (
-            <div style={styles.stylePanel}>
-              {styleBusy && (
-                <p style={styles.stylePanelText}>Reading staged diff and checking the guide…</p>
-              )}
-              {styleOutcome && !styleBusy && <StyleReviewBlock outcome={styleOutcome} />}
-            </div>
-          )}
+      <div style={styles.mainSplit}>
+        {activeTab === "tour" ? (
+          <div style={styles.tabPanel} role="tabpanel" aria-labelledby="onbirdie-tab-tour">
+            <TourTab userRole={profile.role} />
+          </div>
+        ) : activeTab === "style" ? (
+          <div style={styles.tabPanel} role="tabpanel" aria-labelledby="onbirdie-tab-style">
+            <StyleReviewTab
+              busy={styleReviewBusy}
+              outcome={styleReviewOutcome}
+              onRun={startStyleReview}
+            />
+          </div>
+        ) : (
+          <div style={styles.tabPanel} role="tabpanel" aria-labelledby="onbirdie-tab-guide">
+            <WorkspaceGuidePanel
+              me={me}
+              hints={hints}
+              hintsNote={hintsNote}
+              onMeUpdated={onMeUpdated}
+            />
+          </div>
+        )}
+
+        <div style={styles.chatDock} aria-label="Chat with OnBirdie">
           <div style={styles.messages}>
             {messages.map((msg) => (
               <div key={msg.id} style={msg.role === "user" ? styles.userRow : styles.agentRow}>
@@ -230,18 +233,7 @@ export const ChatView: React.FC<Props> = ({ me, profile, onMeUpdated, onSignOut 
             </button>
           </div>
         </div>
-      ) : activeTab === "tour" ? (
-        <div style={styles.tabPanel} role="tabpanel" aria-labelledby="onbirdie-tab-tour">
-          <TourTab userRole={profile.role} />
-        </div>
-      ) : (
-        <WorkspaceGuidePanel
-          me={me}
-          hints={hints}
-          hintsNote={hintsNote}
-          onMeUpdated={onMeUpdated}
-        />
-      )}
+      </div>
     </div>
   );
 };
@@ -255,58 +247,6 @@ function formatText(text: string): React.ReactNode {
     </span>
   ));
 }
-
-function severityColor(sev: string): string {
-  if (sev === "error") return "var(--vscode-errorForeground, #f14c4c)";
-  if (sev === "warning") return "var(--vscode-editorWarning-foreground, #cca700)";
-  return "var(--vscode-textLink-foreground)";
-}
-
-const StyleReviewBlock: React.FC<{ outcome: StyleReviewOutcome }> = ({ outcome }) => {
-  if (!outcome.ok) {
-    return <p style={styles.styleError}>{outcome.error}</p>;
-  }
-  const { result } = outcome;
-  return (
-    <div style={styles.styleBlockInner}>
-      <p style={styles.styleSummary}>{result.summary}</p>
-      {result.tier_used && (
-        <p style={styles.styleTier}>
-          Review tier: {result.tier_used === "lava_light" ? "light (Lava)" : "K2"}
-        </p>
-      )}
-      {result.issues.length === 0 ? (
-        <p style={styles.stylePanelMuted}>No issues reported against the style guide.</p>
-      ) : (
-        <ul style={styles.issueList}>
-          {result.issues.map((it, idx) => (
-            <li key={idx} style={styles.issueItem}>
-              <div style={styles.issueHeader}>
-                <span style={{ ...styles.issueSeverity, color: severityColor(it.severity) }}>
-                  {it.severity}
-                </span>
-                {(it.file_path || it.line_hint) && (
-                  <span style={styles.issueFile}>
-                    {[it.file_path, it.line_hint].filter(Boolean).join(" · ")}
-                  </span>
-                )}
-              </div>
-              <div style={styles.issueGuide}>
-                <span style={styles.issueGuideLabel}>From the guide: </span>
-                {it.guide_quote}
-              </div>
-              <p style={styles.issueBody}>{it.explanation}</p>
-              <p style={styles.issueSuggest}>
-                <span style={styles.issueGuideLabel}>Try: </span>
-                {it.suggestion}
-              </p>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-};
 
 function formatLine(line: string): React.ReactNode {
   const parts: React.ReactNode[] = [];
@@ -365,108 +305,21 @@ const styles: Record<string, React.CSSProperties> = {
     gap: "4px",
     flexShrink: 0,
   },
-  styleBtn: {
-    fontSize: "11px",
-    fontWeight: 600,
-    color: "var(--vscode-button-secondaryForeground, var(--vscode-foreground))",
-    background: "var(--vscode-button-secondaryBackground, rgba(255,255,255,0.08))",
-    border: "1px solid var(--vscode-widget-border, rgba(255,255,255,0.12))",
-    borderRadius: "4px",
-    padding: "4px 8px",
-    cursor: "pointer",
-    fontFamily: "var(--vscode-font-family)",
-    whiteSpace: "nowrap",
-  },
-  stylePanel: {
-    flexShrink: 0,
-    maxHeight: "38vh",
-    overflowY: "auto",
-    padding: "10px 12px",
-    borderBottom: "1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.1))",
-    background: "var(--vscode-editor-background)",
-  },
-  stylePanelText: {
-    fontSize: "12px",
-    color: "var(--vscode-descriptionForeground)",
-    lineHeight: 1.5,
-  },
-  stylePanelMuted: {
-    fontSize: "11px",
-    color: "var(--vscode-descriptionForeground)",
-    marginTop: "6px",
-  },
-  styleError: {
-    fontSize: "12px",
-    color: "var(--vscode-errorForeground, #f14c4c)",
-    lineHeight: 1.5,
-  },
-  styleBlockInner: { display: "flex", flexDirection: "column", gap: "8px" },
-  styleSummary: {
-    fontSize: "12px",
-    fontWeight: 600,
-    color: "var(--vscode-foreground)",
-    lineHeight: 1.5,
-  },
-  styleTier: {
-    fontSize: "10px",
-    color: "var(--vscode-descriptionForeground)",
-    marginTop: "2px",
-  },
-  issueList: {
-    listStyle: "none",
-    margin: 0,
-    padding: 0,
+  mainSplit: {
+    flex: 1,
+    minHeight: 0,
     display: "flex",
     flexDirection: "column",
-    gap: "10px",
+    overflow: "hidden",
   },
-  issueItem: {
-    border: "1px solid var(--vscode-widget-border, rgba(255,255,255,0.1))",
-    borderRadius: "8px",
-    padding: "8px 10px",
-    background: "var(--vscode-sideBar-background)",
-  },
-  issueHeader: {
+  chatDock: {
+    flexShrink: 0,
     display: "flex",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: "8px",
-    marginBottom: "4px",
-  },
-  issueSeverity: {
-    fontSize: "10px",
-    fontWeight: 700,
-    textTransform: "uppercase",
-    letterSpacing: "0.06em",
-  },
-  issueFile: {
-    fontSize: "10px",
-    color: "var(--vscode-descriptionForeground)",
-    fontFamily: "var(--vscode-editor-font-family, monospace)",
-  },
-  issueGuide: {
-    fontSize: "11px",
-    color: "var(--vscode-textPreformat-foreground, var(--vscode-foreground))",
-    fontStyle: "italic",
-    lineHeight: 1.45,
-    marginBottom: "4px",
-  },
-  issueGuideLabel: {
-    fontStyle: "normal",
-    fontWeight: 600,
-    color: "var(--vscode-descriptionForeground)",
-  },
-  issueBody: {
-    fontSize: "11px",
-    color: "var(--vscode-foreground)",
-    lineHeight: 1.5,
-    margin: 0,
-  },
-  issueSuggest: {
-    fontSize: "11px",
-    color: "var(--vscode-foreground)",
-    lineHeight: 1.5,
-    margin: "6px 0 0 0",
+    flexDirection: "column",
+    borderTop: "1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.12))",
+    maxHeight: "min(30vh, 220px)",
+    minHeight: "120px",
+    overflow: "hidden",
   },
   tabPanel: {
     flex: 1,
@@ -477,44 +330,44 @@ const styles: Record<string, React.CSSProperties> = {
   },
   messages: {
     flex: 1,
+    minHeight: 0,
     overflowY: "auto",
-    padding: "12px",
+    padding: "6px 10px",
     display: "flex",
     flexDirection: "column",
-    gap: "8px",
-    minHeight: 0,
+    gap: "6px",
   },
   agentRow: { display: "flex", justifyContent: "flex-start" },
   userRow: { display: "flex", justifyContent: "flex-end" },
   agentBubble: {
     background: "var(--vscode-editorWidget-background)",
     color: "var(--vscode-foreground)",
-    borderRadius: "12px 12px 12px 2px",
-    padding: "8px 12px",
-    fontSize: "12px",
-    lineHeight: "1.6",
+    borderRadius: "10px 10px 10px 2px",
+    padding: "6px 10px",
+    fontSize: "11px",
+    lineHeight: "1.5",
     maxWidth: "85%",
     border: "1px solid var(--vscode-widget-border, rgba(255,255,255,0.1))",
   },
   userBubble: {
     background: "var(--vscode-button-background)",
     color: "var(--vscode-button-foreground)",
-    borderRadius: "12px 12px 2px 12px",
-    padding: "8px 12px",
-    fontSize: "12px",
-    lineHeight: "1.6",
+    borderRadius: "10px 10px 2px 10px",
+    padding: "6px 10px",
+    fontSize: "11px",
+    lineHeight: "1.5",
     maxWidth: "85%",
   },
   typingDots: {
     display: "inline-flex",
     gap: "3px",
-    fontSize: "16px",
+    fontSize: "14px",
     color: "var(--vscode-descriptionForeground)",
   },
   inputRow: {
     display: "flex",
-    gap: "6px",
-    padding: "10px 12px",
+    gap: "5px",
+    padding: "6px 10px",
     borderTop: "1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.1))",
     flexShrink: 0,
     alignItems: "flex-end",
@@ -525,22 +378,22 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--vscode-input-foreground)",
     border: "1px solid var(--vscode-input-border, transparent)",
     borderRadius: "6px",
-    padding: "7px 10px",
-    fontSize: "12px",
+    padding: "5px 8px",
+    fontSize: "11px",
     fontFamily: "var(--vscode-font-family)",
     resize: "none",
     outline: "none",
     lineHeight: "1.4",
   },
   sendBtn: {
-    width: "30px",
-    height: "30px",
+    width: "26px",
+    height: "26px",
     background: "var(--vscode-button-background)",
     color: "var(--vscode-button-foreground)",
     border: "none",
-    borderRadius: "6px",
+    borderRadius: "5px",
     cursor: "pointer",
-    fontSize: "16px",
+    fontSize: "14px",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
