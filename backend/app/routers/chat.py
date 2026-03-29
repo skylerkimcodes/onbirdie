@@ -22,11 +22,7 @@ async def chat(
 ) -> ChatResponse:
     user, employer = user_employer
 
-<<<<<<< Updated upstream
     onboarding_tasks = resolve_onboarding_tasks(employer, user)
-=======
-    onboarding_tasks = resolve_onboarding_tasks(employer, user.get("employee_role"))
->>>>>>> Stashed changes
     workspace_files = [wf.model_dump() for wf in body.workspace_files]
     system_prompt = build_system_prompt(
         user,
