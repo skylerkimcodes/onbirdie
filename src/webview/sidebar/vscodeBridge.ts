@@ -1,6 +1,8 @@
 import type {
   ChatApiMessage,
   ChatSendResult,
+  EmployerAdminApiResult,
+  EmployerAdminWorkspace,
   MeResponse,
   OnboardingProfilePayload,
   ProfileSaveResult,
@@ -83,6 +85,10 @@ export type ResumeServerUploadResult =
 
 let resumeResolve: ((r: ResumePickResult) => void) | undefined;
 let resumeServerResolve: ((r: ResumeServerUploadResult) => void) | undefined;
+let employerAdminLoginResolve:
+  | ((r: { ok: true } | { ok: false; error: string }) => void)
+  | undefined;
+let employerAdminWorkspaceResolve: ((r: EmployerAdminApiResult) => void) | undefined;
 
 if (typeof window !== "undefined") {
   window.addEventListener("message", (event: MessageEvent) => {
@@ -135,6 +141,16 @@ if (typeof window !== "undefined") {
       tourResolve = undefined;
       fn(data.payload as TourGenerateResult);
     }
+    if (data.type === "employerAdmin/loginResult" && employerAdminLoginResolve) {
+      const fn = employerAdminLoginResolve;
+      employerAdminLoginResolve = undefined;
+      fn(data.payload as { ok: true } | { ok: false; error: string });
+    }
+    if (data.type === "employerAdmin/workspaceResult" && employerAdminWorkspaceResolve) {
+      const fn = employerAdminWorkspaceResolve;
+      employerAdminWorkspaceResolve = undefined;
+      fn(data.payload as EmployerAdminApiResult);
+    }
   });
 }
 
@@ -177,6 +193,39 @@ export function saveStyleGuide(
     styleGuideSaveResolve = resolve;
     vscode.postMessage({ type: "styleGuide/save", payload: { text, target } });
   });
+}
+
+export function requestEmployerAdminLogin(
+  identifier: string,
+  adminCode: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  return new Promise((resolve) => {
+    employerAdminLoginResolve = resolve;
+    vscode.postMessage({
+      type: "employerAdmin/login",
+      payload: { identifier, adminCode },
+    });
+  });
+}
+
+export function requestEmployerAdminLoadWorkspace(): Promise<EmployerAdminApiResult> {
+  return new Promise((resolve) => {
+    employerAdminWorkspaceResolve = resolve;
+    vscode.postMessage({ type: "employerAdmin/loadWorkspace" });
+  });
+}
+
+export function requestEmployerAdminSaveWorkspace(
+  body: Pick<EmployerAdminWorkspace, "style_guide" | "role_options" | "cohorts">
+): Promise<EmployerAdminApiResult> {
+  return new Promise((resolve) => {
+    employerAdminWorkspaceResolve = resolve;
+    vscode.postMessage({ type: "employerAdmin/saveWorkspace", payload: body });
+  });
+}
+
+export function requestEmployerAdminLogout(): void {
+  vscode.postMessage({ type: "employerAdmin/logout" });
 }
 
 export function requestWorkspaceHints(highlightPaths: string[]): Promise<WorkspaceHintsResult> {

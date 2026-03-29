@@ -14,6 +14,8 @@ class Settings(BaseSettings):
 
     bootstrap_employer_name: str = ""
     bootstrap_employer_join_code: str = ""
+    # Plain-text admin password for the default "onbirdie" employer (hashed on bootstrap).
+    default_employer_admin_code: str = "onbirdie-admin"
 
     # Lava = forward proxy to an upstream OpenAI-compatible API (not a model by itself).
     # See https://lava.so/docs/gateway/forward-proxy

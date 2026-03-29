@@ -27,6 +27,8 @@ class EmployerPublic(BaseModel):
     slug: str
     role_options: list[str] = Field(default_factory=list)
     highlight_paths: list[str] = Field(default_factory=list)
+    """Legacy single join code; employees may also use cohort codes."""
+    join_code: str = ""
 
 
 class OnboardingTaskPublic(BaseModel):
@@ -48,6 +50,18 @@ class UserPublic(BaseModel):
     has_resume: bool = False
     has_resume_pdf: bool = False
     skills_summary: Optional[str] = None
+    cohort_join_code: Optional[str] = Field(
+        default=None,
+        description="Set when the user registered with a cohort join code.",
+    )
+    cohort_label: Optional[str] = Field(
+        default=None,
+        description="Human-readable cohort name (e.g. Frontend).",
+    )
+    suggested_employee_role: Optional[str] = Field(
+        default=None,
+        description="Default role from the cohort join code (for profile pre-fill).",
+    )
 
 
 class PlanStepPublic(BaseModel):
@@ -163,3 +177,42 @@ class StyleGuidePutBody(BaseModel):
 
     style_guide: str = Field(default="", max_length=500_000)
     target: Literal["personal", "employer"] = "personal"
+
+
+class CohortTaskBody(BaseModel):
+    id: str = Field(default="", max_length=200)
+    title: str = Field(default="", max_length=500)
+    description: str = Field(default="", max_length=4000)
+    sort_order: int = 0
+
+
+class EmployerCohortBody(BaseModel):
+    join_code: str = Field(min_length=4, max_length=64)
+    label: str = Field(min_length=1, max_length=200)
+    default_employee_role: str = Field(min_length=1, max_length=200)
+    tasks: list[CohortTaskBody] = Field(default_factory=list)
+    highlight_paths: list[str] = Field(default_factory=list)
+
+
+class EmployerAdminLoginBody(BaseModel):
+    """Company slug, legacy join code, or any cohort code + admin password."""
+
+    company_identifier: str = Field(min_length=1, max_length=200)
+    admin_code: str = Field(min_length=4, max_length=200)
+
+
+class EmployerAdminWorkspaceBody(BaseModel):
+    """Full replace of team-visible onboarding config (admin portal)."""
+
+    style_guide: str = Field(default="", max_length=500_000)
+    role_options: list[str] = Field(default_factory=list)
+    cohorts: list[EmployerCohortBody] = Field(default_factory=list)
+
+
+class EmployerAdminWorkspaceResponse(BaseModel):
+    company_name: str
+    slug: str
+    join_code: str
+    style_guide: str = ""
+    role_options: list[str] = Field(default_factory=list)
+    cohorts: list[EmployerCohortBody] = Field(default_factory=list)

@@ -25,19 +25,32 @@ from app.style_guide_effective import effective_source, effective_style_guide_te
 router = APIRouter(tags=["me"])
 
 
-def _employer_public(emp: dict) -> EmployerPublic:
+def _employer_public(emp: dict, user: dict | None = None) -> EmployerPublic:
     ro = emp.get("role_options")
     hp = emp.get("highlight_paths")
     if not isinstance(ro, list) or not ro:
         ro = DEFAULT_ROLE_OPTIONS
     if not isinstance(hp, list) or not hp:
         hp = DEFAULT_HIGHLIGHT_PATHS
+    if user:
+        cj = (user.get("cohort_join_code") or "").strip()
+        if cj:
+            for c in emp.get("cohorts") or []:
+                if not isinstance(c, dict):
+                    continue
+                if (c.get("join_code") or "").strip() != cj:
+                    continue
+                chp = c.get("highlight_paths")
+                if isinstance(chp, list) and chp:
+                    hp = chp
+                break
     return EmployerPublic(
         id=str(emp["_id"]),
         name=emp["name"],
         slug=emp["slug"],
         role_options=[str(x) for x in ro],
         highlight_paths=[str(x) for x in hp],
+        join_code=str(emp.get("join_code") or ""),
     )
 
 
@@ -88,21 +101,28 @@ def me_response(user: dict, employer: dict) -> MeResponse:
 
     Shared by the ``/me`` endpoint and other routers (plan, etc.).
     """
-    task_dicts = resolve_onboarding_tasks(employer, user.get("employee_role"))
+    task_dicts = resolve_onboarding_tasks(employer, user)
     tasks = [OnboardingTaskPublic(**d) for d in task_dicts]
     return MeResponse(
-        user=_user_public(user),
-        employer=_employer_public(employer),
+        user=_user_public(user, employer),
+        employer=_employer_public(employer, user),
         onboarding_tasks=tasks,
         onboarding_plan=_onboarding_plan_public(user),
     )
 
 
-def _user_public(user: dict) -> UserPublic:
+def _user_public(user: dict, employer: dict) -> UserPublic:
     dn = user.get("display_name")
     er = user.get("employee_role")
     profile_completed = bool(dn and er)
     resume_text = (user.get("resume_text") or "").strip()
+    cohort_label = None
+    cj = (user.get("cohort_join_code") or "").strip()
+    if cj:
+        for c in employer.get("cohorts") or []:
+            if isinstance(c, dict) and (c.get("join_code") or "").strip() == cj:
+                cohort_label = (c.get("label") or "").strip() or None
+                break
     return UserPublic(
         id=str(user["_id"]),
         email=user["email"],
@@ -115,6 +135,9 @@ def _user_public(user: dict) -> UserPublic:
         has_resume=bool(resume_text),
         has_resume_pdf=bool(user.get("resume_pdf")),
         skills_summary=user.get("skills_summary") or None,
+        cohort_join_code=cj or None,
+        cohort_label=cohort_label,
+        suggested_employee_role=user.get("suggested_employee_role"),
     )
 
 

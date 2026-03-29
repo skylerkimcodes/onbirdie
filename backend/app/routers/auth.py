@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, status
 
 from app.db import get_db
+from app.employer_lookup import find_employer_by_join_code
 from app.jwt_utils import create_access_token
 from app.schemas import LoginBody, RegisterBody, TokenResponse
 from app.security import hash_password, verify_password
@@ -13,9 +14,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 @router.post("/register", response_model=TokenResponse)
 async def register(body: RegisterBody) -> TokenResponse:
     db = get_db()
-    employer = await db.employers.find_one(
-        {"join_code": body.employer_join_code.strip()}
-    )
+    employer, cohort = await find_employer_by_join_code(db, body.employer_join_code)
     if employer is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -27,11 +26,16 @@ async def register(body: RegisterBody) -> TokenResponse:
             status_code=status.HTTP_409_CONFLICT,
             detail="An account with this email already exists",
         )
-    user_doc = {
+    user_doc: dict = {
         "email": body.email.lower(),
         "password_hash": hash_password(body.password),
         "employer_id": employer["_id"],
     }
+    if cohort:
+        user_doc["cohort_join_code"] = (cohort.get("join_code") or "").strip()
+        dar = (cohort.get("default_employee_role") or "").strip()
+        if dar:
+            user_doc["suggested_employee_role"] = dar
     result = await db.users.insert_one(user_doc)
     user_id = str(result.inserted_id)
     token = create_access_token(user_id)

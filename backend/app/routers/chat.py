@@ -17,7 +17,7 @@ async def chat(
 ) -> ChatResponse:
     user, employer = user_employer
 
-    onboarding_tasks = resolve_onboarding_tasks(employer, user.get("employee_role"))
+    onboarding_tasks = resolve_onboarding_tasks(employer, user)
     system_prompt = build_system_prompt(
         user, employer, onboarding_tasks=onboarding_tasks
     )

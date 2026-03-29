@@ -18,9 +18,13 @@ type Phase = "loading" | "login" | "profile" | "chat";
 
 function profileFromMe(me: MeResponse): Profile {
   const u = me.user;
+  const role =
+    (u.employee_role && u.employee_role.trim()) ||
+    (u.suggested_employee_role && u.suggested_employee_role.trim()) ||
+    "";
   return {
     name: u.display_name?.trim() || u.email.split("@")[0] || "",
-    role: u.employee_role ?? "",
+    role,
     experience: u.experience_band ?? "",
     linkedinUrl: u.linkedin_url ?? "",
     resumeText: "",

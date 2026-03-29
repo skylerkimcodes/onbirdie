@@ -7,13 +7,14 @@ import {
   subscribeToExtension,
   type ExtensionToWebviewMessage,
 } from "../vscodeBridge";
+import { EmployerPortalView } from "./EmployerPortalView";
 
 interface Props {
   onLoggedIn: (me: MeResponse) => void;
 }
 
 export const LoginView: React.FC<Props> = ({ onLoggedIn }) => {
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [mode, setMode] = useState<"login" | "register" | "employer">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [joinCode, setJoinCode] = useState("");
@@ -101,6 +102,10 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn }) => {
     }
   };
 
+  if (mode === "employer") {
+    return <EmployerPortalView onBack={() => setMode("login")} />;
+  }
+
   return (
     <div style={styles.container}>
       <div style={styles.logo} aria-hidden>
@@ -129,6 +134,16 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn }) => {
           }}
         >
           Create account
+        </button>
+        <button
+          type="button"
+          style={styles.tab}
+          onClick={() => {
+            setMode("employer");
+            setError(undefined);
+          }}
+        >
+          Employer
         </button>
       </div>
 

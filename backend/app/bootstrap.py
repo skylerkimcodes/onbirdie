@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.config import settings
 from app.db import get_db
 from app.onboarding_defaults import DEFAULT_HIGHLIGHT_PATHS, DEFAULT_ROLE_OPTIONS
+from app.security import hash_password
 
 DEFAULT_ONBOARDING_JOIN_CODE = "onbirdie"
 DEFAULT_ONBOARDING_EMPLOYER_NAME = "OnBirdie"
@@ -24,6 +25,23 @@ DEFAULT_STYLE_GUIDE = """# OnBirdie default engineering style (dev sample)
 ## Commits
 - Commit messages: imperative mood, ~50 char subject, optional body wrapped at 72 chars.
 """
+
+DEFAULT_DEMO_COHORTS: list[dict] = [
+    {
+        "join_code": "ONBD-FE",
+        "label": "Frontend",
+        "default_employee_role": "Frontend Engineer",
+        "tasks": [],
+        "highlight_paths": [],
+    },
+    {
+        "join_code": "ONBD-BE",
+        "label": "Backend",
+        "default_employee_role": "Backend Engineer",
+        "tasks": [],
+        "highlight_paths": [],
+    },
+]
 
 
 async def _ensure_employer(join_code: str, name: str) -> None:
@@ -58,11 +76,27 @@ async def _seed_style_guide_if_missing(join_code: str, guide: str) -> None:
     )
 
 
+async def _seed_admin_code_and_cohorts() -> None:
+    db = get_db()
+    emp = await db.employers.find_one({"join_code": DEFAULT_ONBOARDING_JOIN_CODE})
+    if emp is None:
+        return
+    oid = emp["_id"]
+    updates: dict = {}
+    if not emp.get("admin_code_hash"):
+        updates["admin_code_hash"] = hash_password(settings.default_employer_admin_code)
+    if not emp.get("cohorts"):
+        updates["cohorts"] = DEFAULT_DEMO_COHORTS
+    if updates:
+        await db.employers.update_one({"_id": oid}, {"$set": updates})
+
+
 async def bootstrap_default_employer() -> None:
     await _ensure_employer(DEFAULT_ONBOARDING_JOIN_CODE, DEFAULT_ONBOARDING_EMPLOYER_NAME)
     await _seed_style_guide_if_missing(
         DEFAULT_ONBOARDING_JOIN_CODE, DEFAULT_STYLE_GUIDE
     )
+    await _seed_admin_code_and_cohorts()
 
     if settings.bootstrap_employer_name.strip() and settings.bootstrap_employer_join_code.strip():
         await _ensure_employer(

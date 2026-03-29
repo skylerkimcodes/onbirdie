@@ -8,7 +8,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.db import get_db
-from app.jwt_utils import subject_from_token
+from app.jwt_utils import employer_id_from_employer_admin_token, subject_from_token
 
 security = HTTPBearer(auto_error=False)
 
@@ -51,3 +51,21 @@ async def get_user_and_employer(
             detail="Employer record missing",
         )
     return user, employer
+
+
+async def get_employer_for_admin(
+    creds: Optional[HTTPAuthorizationCredentials] = Depends(security),
+) -> dict:
+    """Employer document for routes secured with ``create_employer_admin_token``."""
+    if creds is None or creds.scheme.lower() != "bearer":
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        eid = employer_id_from_employer_admin_token(creds.credentials)
+        oid = ObjectId(eid)
+    except (ValueError, InvalidId):
+        raise HTTPException(status_code=401, detail="Invalid employer admin token") from None
+    db = get_db()
+    employer = await db.employers.find_one({"_id": oid})
+    if employer is None:
+        raise HTTPException(status_code=401, detail="Employer not found")
+    return employer

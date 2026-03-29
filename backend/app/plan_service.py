@@ -57,7 +57,7 @@ async def generate_onboarding_plan_steps(
     org = (employer.get("name") or "").strip() or "the organization"
     exp = (user.get("experience_band") or "").strip() or "unspecified"
 
-    tasks = resolve_onboarding_tasks(employer, user.get("employee_role"))
+    tasks = resolve_onboarding_tasks(employer, user)
     task_lines = []
     focus_title = ""
     for t in sorted(tasks, key=lambda x: int(x.get("sort_order", 0))):

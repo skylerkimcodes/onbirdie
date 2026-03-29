@@ -2,6 +2,9 @@ import { createHash } from "crypto";
 import * as vscode from "vscode";
 import {
   clearOnboardingPlan,
+  employerAdminLogin,
+  employerAdminSignOut,
+  fetchEmployerAdminWorkspace,
   fetchMe,
   fetchStyleGuide,
   generateOnboardingPlan,
@@ -12,12 +15,13 @@ import {
   patchPlanStep,
   putStyleGuide,
   registerWithCredentials,
+  saveEmployerAdminWorkspace,
   saveOnboardingProfile,
   sendChat,
   signOut,
   uploadResumePdf,
 } from "../lib/auth";
-import type { ChatApiMessage, OnboardingProfilePayload } from "../lib/types";
+import type { ChatApiMessage, EmployerAdminWorkspace, OnboardingProfilePayload } from "../lib/types";
 import { extractResumePlainText } from "../lib/resumeText";
 import { getStagedGitDiff } from "../git/stagedDiff";
 import type { StyleReviewOutcome } from "../styleReviewCore";
@@ -356,6 +360,38 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
               target: p?.target ?? "personal",
             });
             wv.postMessage({ type: "styleGuide/saveResult", payload: result });
+            break;
+          }
+          case "employerAdmin/login": {
+            const p = message.payload as { identifier?: string; adminCode?: string };
+            const r = await employerAdminLogin(
+              secrets,
+              p?.identifier ?? "",
+              p?.adminCode ?? ""
+            );
+            wv.postMessage({ type: "employerAdmin/loginResult", payload: r });
+            break;
+          }
+          case "employerAdmin/loadWorkspace": {
+            const r = await fetchEmployerAdminWorkspace(secrets);
+            wv.postMessage({ type: "employerAdmin/workspaceResult", payload: r });
+            break;
+          }
+          case "employerAdmin/logout": {
+            await employerAdminSignOut(secrets);
+            break;
+          }
+          case "employerAdmin/saveWorkspace": {
+            const p = message.payload as Pick<
+              EmployerAdminWorkspace,
+              "style_guide" | "role_options" | "cohorts"
+            >;
+            const r = await saveEmployerAdminWorkspace(secrets, {
+              style_guide: p.style_guide ?? "",
+              role_options: p.role_options ?? [],
+              cohorts: p.cohorts ?? [],
+            });
+            wv.postMessage({ type: "employerAdmin/workspaceResult", payload: r });
             break;
           }
           default:

@@ -90,8 +90,31 @@ def _normalize_task(raw: dict[str, Any], fallback_index: int) -> dict[str, Any] 
     return {"id": tid, "title": title, "description": desc, "sort_order": order}
 
 
-def resolve_onboarding_tasks(employer: dict, employee_role: str | None) -> list[dict[str, Any]]:
-    role = (employee_role or "").strip()
+def resolve_onboarding_tasks(employer: dict, user: dict) -> list[dict[str, Any]]:
+    """Prefer cohort-specific task lists when the user registered with a cohort code."""
+    role = (user.get("employee_role") or "").strip()
+    cj = (user.get("cohort_join_code") or "").strip()
+
+    if cj:
+        for c in employer.get("cohorts") or []:
+            if not isinstance(c, dict):
+                continue
+            if (c.get("join_code") or "").strip() != cj:
+                continue
+            tasks = c.get("tasks")
+            if isinstance(tasks, list) and tasks:
+                out: list[dict[str, Any]] = []
+                for i, item in enumerate(tasks):
+                    if not isinstance(item, dict):
+                        continue
+                    norm = _normalize_task(item, i + 1)
+                    if norm:
+                        out.append(norm)
+                if out:
+                    out.sort(key=lambda x: x["sort_order"])
+                    return out
+            break
+
     if not role:
         return []
 

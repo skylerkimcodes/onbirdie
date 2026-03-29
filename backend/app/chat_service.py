@@ -6,8 +6,10 @@ from langchain_openai import ChatOpenAI
 from app.config import settings
 from app.schemas import ChatTurn
 from app.services.lava_client import lava_forward_chat_completions, openai_message_content
+from app.style_guide_effective import effective_source, effective_style_guide_text
 
 _RESUME_CAP = 12_000
+_STYLE_GUIDE_CAP = 24_000
 
 import re as _re
 
@@ -172,6 +174,30 @@ def build_system_prompt(
             lines.append(f"- {prefix}{title}: {desc}")
     else:
         lines.append("No specific onboarding tasks are listed for this role yet.")
+
+    guide = effective_style_guide_text(user, employer).strip()
+    lines.append("")
+    lines.append(
+        "Engineering style guide (answer clarifying questions about team coding conventions; "
+        "cite or paraphrase these rules when explaining style choices):"
+    )
+    if guide:
+        src = effective_source(user, employer)
+        src_note = {
+            "personal": "Source: personal override (takes precedence over team).",
+            "employer": "Source: employer team guide.",
+            "demo": "Source: built-in demo conventions (set STYLE_GUIDE_USE_MICROSOFT_DEMO=false to rely on MongoDB only).",
+        }.get(src)
+        if src_note:
+            lines.append(src_note)
+        excerpt = (
+            guide
+            if len(guide) <= _STYLE_GUIDE_CAP
+            else guide[:_STYLE_GUIDE_CAP] + "\n… [truncated]"
+        )
+        lines.append(excerpt)
+    else:
+        lines.append("(No style guide text is available.)")
 
     plan_raw = user.get("onboarding_plan")
     lines.append("")

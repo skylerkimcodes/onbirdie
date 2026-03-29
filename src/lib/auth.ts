@@ -4,6 +4,8 @@ import { getApiBaseUrl } from "./config";
 import type {
   ChatApiMessage,
   ChatSendResult,
+  EmployerAdminWorkspace,
+  EmployerAdminApiResult,
   MeResponse,
   OnboardingProfilePayload,
   ProfileSaveResult,
@@ -12,6 +14,7 @@ import type {
 } from "./types";
 
 const ACCESS_TOKEN_KEY = "onbirdie.accessToken";
+const EMPLOYER_ADMIN_TOKEN_KEY = "onbirdie.employerAdminToken";
 
 export type AuthResult =
   | { ok: true; me: MeResponse }
@@ -59,6 +62,108 @@ export async function setAccessToken(
     await secrets.delete(ACCESS_TOKEN_KEY);
   } else {
     await secrets.store(ACCESS_TOKEN_KEY, token);
+  }
+}
+
+export async function getEmployerAdminToken(
+  secrets: vscode.SecretStorage
+): Promise<string | undefined> {
+  return secrets.get(EMPLOYER_ADMIN_TOKEN_KEY);
+}
+
+export async function setEmployerAdminToken(
+  secrets: vscode.SecretStorage,
+  token: string | undefined
+): Promise<void> {
+  if (token === undefined) {
+    await secrets.delete(EMPLOYER_ADMIN_TOKEN_KEY);
+  } else {
+    await secrets.store(EMPLOYER_ADMIN_TOKEN_KEY, token);
+  }
+}
+
+export async function employerAdminLogin(
+  secrets: vscode.SecretStorage,
+  companyIdentifier: string,
+  adminCode: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const res = await apiRequest("POST", "/api/v1/employer-admin/login", {
+      body: {
+        company_identifier: companyIdentifier.trim(),
+        admin_code: adminCode,
+      },
+    });
+    if (!res.ok) {
+      return { ok: false, error: await parseErrorDetail(res) };
+    }
+    const data = (await res.json()) as { access_token: string };
+    await setEmployerAdminToken(secrets, data.access_token);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: authFailureMessage(e) };
+  }
+}
+
+export async function fetchEmployerAdminWorkspace(
+  secrets: vscode.SecretStorage
+): Promise<EmployerAdminApiResult> {
+  const token = await getEmployerAdminToken(secrets);
+  if (!token) {
+    return { ok: false, error: "Not signed in to employer portal." };
+  }
+  try {
+    const res = await apiRequest("GET", "/api/v1/employer-admin/workspace", {
+      token,
+      timeoutMs: 30_000,
+    });
+    if (res.status === 401) {
+      await setEmployerAdminToken(secrets, undefined);
+      return { ok: false, error: "Employer session expired. Sign in again." };
+    }
+    if (!res.ok) {
+      return { ok: false, error: await parseErrorDetail(res) };
+    }
+    const data = (await res.json()) as EmployerAdminWorkspace;
+    return { ok: true, data };
+  } catch (e) {
+    return { ok: false, error: authFailureMessage(e) };
+  }
+}
+
+export async function employerAdminSignOut(secrets: vscode.SecretStorage): Promise<void> {
+  await setEmployerAdminToken(secrets, undefined);
+}
+
+export async function saveEmployerAdminWorkspace(
+  secrets: vscode.SecretStorage,
+  body: Pick<EmployerAdminWorkspace, "style_guide" | "role_options" | "cohorts">
+): Promise<EmployerAdminApiResult> {
+  const token = await getEmployerAdminToken(secrets);
+  if (!token) {
+    return { ok: false, error: "Not signed in to employer portal." };
+  }
+  try {
+    const res = await apiRequest("PUT", "/api/v1/employer-admin/workspace", {
+      token,
+      body: {
+        style_guide: body.style_guide,
+        role_options: body.role_options,
+        cohorts: body.cohorts,
+      },
+      timeoutMs: 60_000,
+    });
+    if (res.status === 401) {
+      await setEmployerAdminToken(secrets, undefined);
+      return { ok: false, error: "Employer session expired. Sign in again." };
+    }
+    if (!res.ok) {
+      return { ok: false, error: await parseErrorDetail(res) };
+    }
+    const data = (await res.json()) as EmployerAdminWorkspace;
+    return { ok: true, data };
+  } catch (e) {
+    return { ok: false, error: authFailureMessage(e) };
   }
 }
 
@@ -165,6 +270,7 @@ export async function signOut(
   options?: { silent?: boolean }
 ): Promise<void> {
   await setAccessToken(secrets, undefined);
+  await setEmployerAdminToken(secrets, undefined);
   if (!options?.silent) {
     void vscode.window.showInformationMessage("OnBirdie: signed out.");
   }

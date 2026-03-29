@@ -4,6 +4,8 @@ export interface EmployerPublic {
   slug: string;
   role_options: string[];
   highlight_paths: string[];
+  /** Company-wide join code; cohort codes are separate. */
+  join_code?: string;
 }
 
 export interface UserPublic {
@@ -19,7 +21,38 @@ export interface UserPublic {
   /** Stored PDF on the server (multipart upload), distinct from pasted text. */
   has_resume_pdf?: boolean;
   skills_summary?: string | null;
+  cohort_join_code?: string | null;
+  cohort_label?: string | null;
+  /** Suggested role from cohort registration (profile pre-fill). */
+  suggested_employee_role?: string | null;
 }
+
+/** Employer portal (admin token — not employee session). */
+export interface EmployerCohortDTO {
+  join_code: string;
+  label: string;
+  default_employee_role: string;
+  tasks: Array<{
+    id?: string;
+    title: string;
+    description: string;
+    sort_order: number;
+  }>;
+  highlight_paths: string[];
+}
+
+export interface EmployerAdminWorkspace {
+  company_name: string;
+  slug: string;
+  join_code: string;
+  style_guide: string;
+  role_options: string[];
+  cohorts: EmployerCohortDTO[];
+}
+
+export type EmployerAdminApiResult =
+  | { ok: true; data: EmployerAdminWorkspace }
+  | { ok: false; error: string };
 
 export type StyleGuideEffectiveSource = "personal" | "employer" | "demo" | "none";
 

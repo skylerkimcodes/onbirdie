@@ -28,9 +28,26 @@ def decode_access_token(token: str) -> dict[str, Any]:
 def subject_from_token(token: str) -> str:
     try:
         payload = decode_access_token(token)
+        if payload.get("typ") == "employer_admin":
+            raise JWTError("employer admin token cannot be used as a user session")
         sub = payload.get("sub")
         if not isinstance(sub, str) or not sub:
             raise JWTError("missing sub")
         return sub
     except JWTError as e:
         raise ValueError("invalid token") from e
+
+
+def create_employer_admin_token(employer_id: str) -> str:
+    """JWT for employer portal (style guide + cohorts); not a user session."""
+    return create_access_token(employer_id, extra={"typ": "employer_admin"})
+
+
+def employer_id_from_employer_admin_token(token: str) -> str:
+    payload = decode_access_token(token)
+    if payload.get("typ") != "employer_admin":
+        raise ValueError("not an employer admin token")
+    sub = payload.get("sub")
+    if not isinstance(sub, str) or not sub:
+        raise ValueError("missing sub")
+    return sub

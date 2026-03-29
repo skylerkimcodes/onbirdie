@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.bootstrap import bootstrap_default_employer
 from app.db import close_db, connect_db, ensure_indexes
-from app.routers import auth, chat, me, plan, style_review, tour
+from app.routers import auth, chat, employer_admin, me, plan, style_review, tour
 
 
 @asynccontextmanager
@@ -30,6 +30,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix="/api/v1")
+app.include_router(employer_admin.router, prefix="/api/v1")
 app.include_router(me.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
 app.include_router(plan.router, prefix="/api/v1")
