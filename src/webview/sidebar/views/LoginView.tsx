@@ -30,6 +30,9 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn }) => {
     }
   };
 
+  const onLoggedInRef = useRef(onLoggedIn);
+  onLoggedInRef.current = onLoggedIn;
+
   useEffect(() => {
     return subscribeToExtension((msg: ExtensionToWebviewMessage) => {
       if (msg.type === "auth/loginResult" && pendingRef.current === "login") {
@@ -37,7 +40,7 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn }) => {
         clearBusyDeadline();
         setBusy(false);
         if (msg.payload.ok) {
-          onLoggedIn(msg.payload.me);
+          onLoggedInRef.current(msg.payload.me);
         } else {
           setError(msg.payload.error);
         }
@@ -48,13 +51,13 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn }) => {
         clearBusyDeadline();
         setBusy(false);
         if (msg.payload.ok) {
-          onLoggedIn(msg.payload.me);
+          onLoggedInRef.current(msg.payload.me);
         } else {
           setError(msg.payload.error);
         }
       }
     });
-  }, [onLoggedIn]);
+  }, []);
 
   useEffect(() => {
     return () => clearBusyDeadline();

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { OB_EASE } from "./motion";
 import type { MeResponse, OnboardingProfilePayload } from "../../lib/types";
 import { LoginView } from "./views/LoginView";
@@ -84,7 +84,7 @@ export const App: React.FC = () => {
     return unsub;
   }, []);
 
-  const handleLoggedIn = (m: MeResponse) => {
+  const handleLoggedIn = useCallback((m: MeResponse) => {
     setMe(m);
     if (m.user.profile_completed) {
       const p = profileFromMe(m);
@@ -94,7 +94,7 @@ export const App: React.FC = () => {
     } else {
       setPhase("profile");
     }
-  };
+  }, []);
 
   const handleProfileComplete = async (p: Profile) => {
     const body: OnboardingProfilePayload = {

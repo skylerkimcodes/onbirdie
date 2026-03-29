@@ -358,38 +358,46 @@ export async function saveOnboardingProfile(
   return { ok: true, me };
 }
 
+/** Chat can run a large prompt + workspace excerpts; allow longer than default API timeout. */
+const CHAT_TIMEOUT_MS = 120_000;
+
 export async function sendChat(
   secrets: vscode.SecretStorage,
   messages: ChatApiMessage[],
   workspaceFiles?: { path: string; excerpt: string }[]
 ): Promise<ChatSendResult> {
-  const token = await getAccessToken(secrets);
-  if (!token) {
-    return { ok: false, error: "Not signed in." };
+  try {
+    const token = await getAccessToken(secrets);
+    if (!token) {
+      return { ok: false, error: "Not signed in." };
+    }
+    const res = await apiRequest("POST", "/api/v1/chat", {
+      token,
+      body: {
+        messages,
+        workspace_files: workspaceFiles ?? [],
+      },
+      timeoutMs: CHAT_TIMEOUT_MS,
+    });
+    if (res.status === 401) {
+      await setAccessToken(secrets, undefined);
+      return { ok: false, error: "Session expired. Sign in again." };
+    }
+    if (!res.ok) {
+      return { ok: false, error: await parseErrorDetail(res) };
+    }
+    const data = (await res.json()) as {
+      message: string;
+      code_refs?: ChatCodeRef[];
+    };
+    return {
+      ok: true,
+      message: data.message,
+      code_refs: data.code_refs ?? [],
+    };
+  } catch (e) {
+    return { ok: false, error: authFailureMessage(e) };
   }
-  const res = await apiRequest("POST", "/api/v1/chat", {
-    token,
-    body: {
-      messages,
-      workspace_files: workspaceFiles ?? [],
-    },
-  });
-  if (res.status === 401) {
-    await setAccessToken(secrets, undefined);
-    return { ok: false, error: "Session expired. Sign in again." };
-  }
-  if (!res.ok) {
-    return { ok: false, error: await parseErrorDetail(res) };
-  }
-  const data = (await res.json()) as {
-    message: string;
-    code_refs?: ChatCodeRef[];
-  };
-  return {
-    ok: true,
-    message: data.message,
-    code_refs: data.code_refs ?? [],
-  };
 }
 
 export async function generateOnboardingPlan(

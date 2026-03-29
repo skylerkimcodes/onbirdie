@@ -94,51 +94,72 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
         switch (message.type) {
           case "auth/getSession": {
-            const me = await fetchMe(secrets);
+            let me: Awaited<ReturnType<typeof fetchMe>> = null;
+            try {
+              me = await fetchMe(secrets);
+            } catch {
+              me = null;
+            }
             wv.postMessage({ type: "auth/session", payload: { me } });
             break;
           }
           case "auth/login": {
-            const p = message.payload as { email?: string; password?: string };
-            const result = await loginWithCredentials(
-              secrets,
-              p?.email ?? "",
-              p?.password ?? ""
-            );
-            if (result.ok) {
+            try {
+              const p = message.payload as { email?: string; password?: string };
+              const result = await loginWithCredentials(
+                secrets,
+                p?.email ?? "",
+                p?.password ?? ""
+              );
+              if (result.ok) {
+                wv.postMessage({
+                  type: "auth/loginResult",
+                  payload: { ok: true as const, me: result.me },
+                });
+              } else {
+                wv.postMessage({
+                  type: "auth/loginResult",
+                  payload: { ok: false as const, error: result.error },
+                });
+              }
+            } catch (e) {
+              const err = e instanceof Error ? e.message : "Sign-in failed.";
               wv.postMessage({
                 type: "auth/loginResult",
-                payload: { ok: true as const, me: result.me },
-              });
-            } else {
-              wv.postMessage({
-                type: "auth/loginResult",
-                payload: { ok: false as const, error: result.error },
+                payload: { ok: false as const, error: err },
               });
             }
             break;
           }
           case "auth/register": {
-            const p = message.payload as {
-              email?: string;
-              password?: string;
-              employerJoinCode?: string;
-            };
-            const result = await registerWithCredentials(
-              secrets,
-              p?.email ?? "",
-              p?.password ?? "",
-              p?.employerJoinCode ?? ""
-            );
-            if (result.ok) {
+            try {
+              const p = message.payload as {
+                email?: string;
+                password?: string;
+                employerJoinCode?: string;
+              };
+              const result = await registerWithCredentials(
+                secrets,
+                p?.email ?? "",
+                p?.password ?? "",
+                p?.employerJoinCode ?? ""
+              );
+              if (result.ok) {
+                wv.postMessage({
+                  type: "auth/registerResult",
+                  payload: { ok: true as const, me: result.me },
+                });
+              } else {
+                wv.postMessage({
+                  type: "auth/registerResult",
+                  payload: { ok: false as const, error: result.error },
+                });
+              }
+            } catch (e) {
+              const err = e instanceof Error ? e.message : "Registration failed.";
               wv.postMessage({
                 type: "auth/registerResult",
-                payload: { ok: true as const, me: result.me },
-              });
-            } else {
-              wv.postMessage({
-                type: "auth/registerResult",
-                payload: { ok: false as const, error: result.error },
+                payload: { ok: false as const, error: err },
               });
             }
             break;
@@ -237,18 +258,31 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             break;
           }
           case "chat/send": {
-            const p = message.payload as {
-              messages?: ChatApiMessage[];
-              highlight_paths?: string[];
-            };
-            const msgs = p?.messages ?? [];
-            const workspaceFiles = await collectWorkspaceContextForChat(
-              p?.highlight_paths ?? [],
-              12,
-              4000
-            );
-            const result = await sendChat(secrets, msgs, workspaceFiles);
-            wv.postMessage({ type: "chat/result", payload: result });
+            try {
+              const p = message.payload as {
+                messages?: ChatApiMessage[];
+                highlight_paths?: string[];
+              };
+              const msgs = p?.messages ?? [];
+              let workspaceFiles: { path: string; excerpt: string }[] = [];
+              try {
+                workspaceFiles = await collectWorkspaceContextForChat(
+                  p?.highlight_paths ?? [],
+                  12,
+                  4000
+                );
+              } catch {
+                workspaceFiles = [];
+              }
+              const result = await sendChat(secrets, msgs, workspaceFiles);
+              wv.postMessage({ type: "chat/result", payload: result });
+            } catch (e) {
+              const err = e instanceof Error ? e.message : "Chat request failed.";
+              wv.postMessage({
+                type: "chat/result",
+                payload: { ok: false as const, error: err },
+              });
+            }
             break;
           }
           case "plan/generate": {
