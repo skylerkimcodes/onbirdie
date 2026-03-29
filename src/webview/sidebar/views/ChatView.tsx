@@ -146,6 +146,13 @@ export const ChatView: React.FC<ChatViewProps> = ({ me, profile, onMeUpdated, on
     requestStyleReview();
   };
 
+  const userDisplayName = (
+    profile.name ||
+    me.user.display_name ||
+    me.user.email.split("@")[0] ||
+    me.user.email
+  ).trim();
+
   return (
     <div style={styles.container}>
       <div style={styles.header}>
@@ -155,6 +162,9 @@ export const ChatView: React.FC<ChatViewProps> = ({ me, profile, onMeUpdated, on
           <div style={styles.headerSub}>{profile.role}</div>
         </div>
         <div style={styles.headerActions}>
+          <div style={styles.userName} title={me.user.email}>
+            {userDisplayName}
+          </div>
           {onSignOut && (
             <button type="button" style={styles.signOut} onClick={onSignOut}>
               Sign out
@@ -302,8 +312,21 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     alignItems: "flex-end",
-    gap: "4px",
+    gap: "6px",
     flexShrink: 0,
+    maxWidth: "42%",
+    minWidth: 0,
+  },
+  userName: {
+    fontSize: "11px",
+    fontWeight: 600,
+    color: "var(--vscode-foreground)",
+    lineHeight: 1.25,
+    textAlign: "right",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    width: "100%",
   },
   mainSplit: {
     flex: 1,

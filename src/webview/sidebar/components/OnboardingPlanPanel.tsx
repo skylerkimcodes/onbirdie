@@ -609,6 +609,9 @@ const styles: Record<string, React.CSSProperties> = {
     background: "var(--vscode-sideBar-background)",
     minWidth: 0,
   },
+  questCardEmbedded: {
+    padding: "5px 6px 4px",
+  },
   questCardDone: {
     opacity: 0.88,
     borderColor: "var(--vscode-widget-border, rgba(255,255,255,0.06))",
