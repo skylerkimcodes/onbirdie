@@ -20,7 +20,8 @@ export const TourTab: React.FC<Props> = ({ userRole, isActive }) => {
   const stepsRef = useRef<TourStep[]>([]);
   stepsRef.current = steps;
 
-  const autoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  /** DOM `window.setInterval` handle (number); avoids Node `Timeout` vs `number` mismatch in typings */
+  const autoTimerRef = useRef<number | null>(null);
 
   const clearAutoAdvance = useCallback(() => {
     if (autoTimerRef.current !== null) {
