@@ -77,6 +77,21 @@ def _strip_json_fence(text: str) -> str:
     return t.strip()
 
 
+def _first_json_dict(text: str) -> dict | None:
+    """Parse the first JSON object in *text* (models often add prose before/after)."""
+    dec = json.JSONDecoder()
+    for i, ch in enumerate(text):
+        if ch != "{":
+            continue
+        try:
+            val, _ = dec.raw_decode(text, i)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(val, dict):
+            return val
+    return None
+
+
 def _build_user_block_diff(style_guide: str, diff_trimmed: str) -> str:
     guide_section = (
         style_guide.strip()
@@ -145,14 +160,40 @@ Numbered source — use the integer before `|` as **line_start** in your JSON (1
 
 
 def _parse_style_json(payload: str) -> StyleReviewResponse:
-    cleaned = _strip_json_fence(payload)
-    try:
-        data = json.loads(cleaned)
-        return StyleReviewResponse.model_validate(data)
-    except json.JSONDecodeError as e:
-        raise RuntimeError(f"Model returned non-JSON: {e}") from e
-    except ValidationError as e:
-        raise RuntimeError(f"Model JSON did not match schema: {e}") from e
+    raw = (payload or "").strip()
+    if not raw:
+        raise RuntimeError(
+            "Style review model returned an empty response. "
+            "Try again, or verify K2 / Lava keys and that the upstream model is reachable."
+        )
+
+    cleaned = _strip_json_fence(raw)
+    attempts: list[str] = []
+    for part in (cleaned, raw):
+        if part and part not in attempts:
+            attempts.append(part)
+
+    last_json_err: json.JSONDecodeError | None = None
+    for part in attempts:
+        try:
+            data = json.loads(part)
+            return StyleReviewResponse.model_validate(data)
+        except json.JSONDecodeError as e:
+            last_json_err = e
+        except ValidationError as e:
+            raise RuntimeError(f"Model JSON did not match schema: {e}") from e
+
+    loose = _first_json_dict(raw)
+    if loose is not None:
+        try:
+            return StyleReviewResponse.model_validate(loose)
+        except ValidationError as e:
+            raise RuntimeError(f"Model JSON did not match schema: {e}") from e
+
+    preview = raw[:500] if len(raw) > 500 else raw
+    raise RuntimeError(
+        f"Model returned non-JSON: {last_json_err}. Preview: {preview!r}"
+    ) from last_json_err
 
 
 _JS_TS_LANG = frozenset(
@@ -268,7 +309,18 @@ async def _complete_with_lava_light(*, system: str, user_block: str) -> str:
             body=body,
             use_byok=True,
         )
-    return strip_thinking_tags(openai_message_content(resp))
+
+    text = strip_thinking_tags(openai_message_content(resp))
+    if not text.strip() and body.get("response_format"):
+        logger.info("Lava light returned empty content with json_object; retrying without response_format")
+        body.pop("response_format", None)
+        resp = await lava_forward_chat_completions(
+            upstream_chat_completions_url=upstream,
+            body=body,
+            use_byok=True,
+        )
+        text = strip_thinking_tags(openai_message_content(resp))
+    return text
 
 
 async def _run_model(*, system: str, user_block: str) -> StyleReviewResponse:

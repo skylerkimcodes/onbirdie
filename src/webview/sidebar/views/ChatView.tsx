@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import type { MeResponse, StyleReviewOutcome, WorkspaceHintFile } from "../../../lib/types";
 import { Profile } from "./ProfileView";
 import {
@@ -12,6 +12,7 @@ import { WorkspaceGuidePanel } from "../components/WorkspaceGuidePanel";
 import { SidebarTabBar, type SidebarTabId } from "../components/SidebarTabBar";
 import { StyleReviewTab } from "../components/StyleReviewTab";
 import { TourTab } from "../components/TourTab";
+import { OB_EASE } from "../motion";
 
 interface Message {
   id: number;
@@ -38,7 +39,27 @@ function buildWelcome(me: MeResponse, profile: Profile): string {
   if (me.user.has_resume && !skillsBlock) {
     skillsBlock = `\n\nWe saved your resume text so I can reference your background when it helps.`;
   }
-  return `Hey ${name}! I'm OnBirdie, your onboarding agent. I know you're a **${role}** — I'll tailor guidance to that.${skillsBlock}\n\nHere's what I can help you with:\n• **Chat** (below) — ask about the repo or your tasks\n• **Guide** — suggested files, team tasks, and your flock of **birdies** (onboarding milestones)\n• **Tour** — walk the codebase for your role\n• **Style** — review staged changes against your style guide\n\nWhat would you like to start with?`;
+  return `Hey ${name}! I'm OnBirdie, your onboarding agent. I know you're a **${role}** — I'll tailor guidance to that.${skillsBlock}\n\nHere's what I can help you with:\n• **Chat** (below) — ask about the repo or your tasks\n• **Tour** — walk the codebase for your role (opens first; runs a guided pass on startup)\n• **Guide** — suggested files, team tasks, and your flock of **birdies** (onboarding milestones)\n• **Style** — review staged changes against your style guide\n\nWhat would you like to start with?`;
+}
+
+const CHAT_HEIGHT_KEY = "onbirdie.sidebarChatHeightPx";
+const DEFAULT_CHAT_HEIGHT = 320;
+const MIN_CHAT_HEIGHT = 140;
+const MAX_CHAT_FRAC = 0.82;
+
+function readStoredChatHeight(): number {
+  try {
+    const raw = localStorage.getItem(CHAT_HEIGHT_KEY);
+    if (raw) {
+      const n = parseInt(raw, 10);
+      if (!Number.isNaN(n) && n >= MIN_CHAT_HEIGHT) {
+        return n;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return DEFAULT_CHAT_HEIGHT;
 }
 
 export const ChatView: React.FC<ChatViewProps> = ({ me, profile, onMeUpdated, onSignOut }) => {
@@ -52,7 +73,10 @@ export const ChatView: React.FC<ChatViewProps> = ({ me, profile, onMeUpdated, on
   const [hintsNote, setHintsNote] = useState<string | undefined>();
   const [styleReviewBusy, setStyleReviewBusy] = useState(false);
   const [styleReviewOutcome, setStyleReviewOutcome] = useState<StyleReviewOutcome | null>(null);
+  const [chatHeightPx, setChatHeightPx] = useState(readStoredChatHeight);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const mainSplitRef = useRef<HTMLDivElement>(null);
+  const chatDragRef = useRef<{ startY: number; startH: number } | null>(null);
 
   const highlightKey = me.employer.highlight_paths.join("\0");
 
@@ -88,6 +112,28 @@ export const ChatView: React.FC<ChatViewProps> = ({ me, profile, onMeUpdated, on
       cancelled = true;
     };
   }, [highlightKey, me.employer.highlight_paths]);
+
+  const clampChatHeight = useCallback((h: number) => {
+    const el = mainSplitRef.current;
+    const maxPx = el
+      ? Math.max(MIN_CHAT_HEIGHT, Math.floor(el.clientHeight * MAX_CHAT_FRAC))
+      : 560;
+    return Math.min(maxPx, Math.max(MIN_CHAT_HEIGHT, Math.round(h)));
+  }, []);
+
+  useEffect(() => {
+    const root = mainSplitRef.current;
+    if (!root) {
+      return;
+    }
+    const apply = () => {
+      setChatHeightPx((h) => clampChatHeight(h));
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(root);
+    return () => ro.disconnect();
+  }, [clampChatHeight]);
 
   const send = () => {
     const text = input.trim();
@@ -149,6 +195,40 @@ export const ChatView: React.FC<ChatViewProps> = ({ me, profile, onMeUpdated, on
     me.user.email
   ).trim();
 
+  const onChatResizeStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      chatDragRef.current = { startY: e.clientY, startH: chatHeightPx };
+      document.body.style.cursor = "ns-resize";
+      const onMove = (ev: MouseEvent) => {
+        const drag = chatDragRef.current;
+        if (!drag) {
+          return;
+        }
+        const next = drag.startH + (drag.startY - ev.clientY);
+        setChatHeightPx(clampChatHeight(next));
+      };
+      const onUp = () => {
+        chatDragRef.current = null;
+        document.body.style.cursor = "";
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        setChatHeightPx((h) => {
+          const c = clampChatHeight(h);
+          try {
+            localStorage.setItem(CHAT_HEIGHT_KEY, String(c));
+          } catch {
+            /* ignore */
+          }
+          return c;
+        });
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    },
+    [chatHeightPx, clampChatHeight]
+  );
+
   return (
     <div style={styles.container}>
       <div style={styles.header}>
@@ -171,13 +251,23 @@ export const ChatView: React.FC<ChatViewProps> = ({ me, profile, onMeUpdated, on
 
       <SidebarTabBar active={activeTab} onChange={setActiveTab} />
 
-      <div style={styles.mainSplit}>
+      <div ref={mainSplitRef} style={styles.mainSplit}>
         {activeTab === "tour" ? (
-          <div style={styles.tabPanel} role="tabpanel" aria-labelledby="onbirdie-tab-tour">
+          <div
+            key="tour"
+            style={styles.tabPanelAnimated}
+            role="tabpanel"
+            aria-labelledby="onbirdie-tab-tour"
+          >
             <TourTab userRole={profile.role} />
           </div>
         ) : activeTab === "style" ? (
-          <div style={styles.tabPanel} role="tabpanel" aria-labelledby="onbirdie-tab-style">
+          <div
+            key="style"
+            style={styles.tabPanelAnimated}
+            role="tabpanel"
+            aria-labelledby="onbirdie-tab-style"
+          >
             <StyleReviewTab
               busy={styleReviewBusy}
               outcome={styleReviewOutcome}
@@ -185,7 +275,12 @@ export const ChatView: React.FC<ChatViewProps> = ({ me, profile, onMeUpdated, on
             />
           </div>
         ) : (
-          <div style={styles.tabPanel} role="tabpanel" aria-labelledby="onbirdie-tab-guide">
+          <div
+            key="guide"
+            style={styles.tabPanelAnimated}
+            role="tabpanel"
+            aria-labelledby="onbirdie-tab-guide"
+          >
             <WorkspaceGuidePanel
               me={me}
               hints={hints}
@@ -195,7 +290,35 @@ export const ChatView: React.FC<ChatViewProps> = ({ me, profile, onMeUpdated, on
           </div>
         )}
 
-        <div style={styles.chatDock} aria-label="Chat with OnBirdie">
+        <div
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Drag to resize chat"
+          tabIndex={0}
+          style={styles.chatResizeHandle}
+          onMouseDown={onChatResizeStart}
+          onKeyDown={(e) => {
+            const step = e.shiftKey ? 24 : 12;
+            if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+              e.preventDefault();
+              const delta = e.key === "ArrowUp" ? step : -step;
+              setChatHeightPx((h) => {
+                const c = clampChatHeight(h + delta);
+                try {
+                  localStorage.setItem(CHAT_HEIGHT_KEY, String(c));
+                } catch {
+                  /* ignore */
+                }
+                return c;
+              });
+            }
+          }}
+        />
+
+        <div
+          style={{ ...styles.chatDock, height: chatHeightPx }}
+          aria-label="Chat with OnBirdie"
+        >
           <div style={styles.messages}>
             {messages.map((msg) => (
               <div key={msg.id} style={msg.role === "user" ? styles.userRow : styles.agentRow}>
@@ -208,9 +331,9 @@ export const ChatView: React.FC<ChatViewProps> = ({ me, profile, onMeUpdated, on
               <div style={styles.agentRow}>
                 <div style={styles.agentBubble}>
                   <span style={styles.typingDots}>
-                    <span>•</span>
-                    <span>•</span>
-                    <span>•</span>
+                    <span style={styles.typingDot}>•</span>
+                    <span style={{ ...styles.typingDot, ...styles.typingDot2 }}>•</span>
+                    <span style={{ ...styles.typingDot, ...styles.typingDot3 }}>•</span>
                   </span>
                 </div>
               </div>
@@ -301,6 +424,7 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     fontFamily: "var(--vscode-font-family)",
     flexShrink: 0,
+    transition: `opacity 0.2s ${OB_EASE}, color 0.2s ${OB_EASE}`,
   },
   headerTitle: { fontSize: "13px", fontWeight: 700, color: "var(--vscode-foreground)" },
   headerSub: { fontSize: "11px", color: "var(--vscode-descriptionForeground)" },
@@ -331,14 +455,28 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     overflow: "hidden",
   },
+  chatResizeHandle: {
+    flexShrink: 0,
+    height: "7px",
+    marginTop: "-1px",
+    cursor: "ns-resize",
+    userSelect: "none",
+    touchAction: "none",
+    background: "var(--vscode-sideBar-background)",
+    borderTop: "1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.12))",
+    borderBottom: "1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.08))",
+    position: "relative",
+    zIndex: 2,
+    transition: `background 0.22s ${OB_EASE}, border-color 0.22s ${OB_EASE}`,
+  },
   chatDock: {
     flexShrink: 0,
+    flexGrow: 0,
     display: "flex",
     flexDirection: "column",
-    borderTop: "1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.12))",
-    maxHeight: "min(30vh, 220px)",
-    minHeight: "120px",
+    minHeight: 0,
     overflow: "hidden",
+    transition: `height 0.24s ${OB_EASE}`,
   },
   tabPanel: {
     flex: 1,
@@ -346,6 +484,14 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     overflow: "hidden",
+  },
+  tabPanelAnimated: {
+    flex: 1,
+    minHeight: 0,
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+    animation: `ob-panel-in 0.36s ${OB_EASE}`,
   },
   messages: {
     flex: 1,
@@ -362,26 +508,40 @@ const styles: Record<string, React.CSSProperties> = {
     background: "var(--vscode-editorWidget-background)",
     color: "var(--vscode-foreground)",
     borderRadius: "10px 10px 10px 2px",
-    padding: "6px 10px",
-    fontSize: "11px",
+    padding: "8px 12px",
+    fontSize: "12px",
     lineHeight: "1.5",
     maxWidth: "85%",
     border: "1px solid var(--vscode-widget-border, rgba(255,255,255,0.1))",
+    animation: `ob-msg-in 0.34s ${OB_EASE}`,
+    transition: `border-color 0.22s ${OB_EASE}, box-shadow 0.22s ${OB_EASE}`,
   },
   userBubble: {
     background: "var(--vscode-button-background)",
     color: "var(--vscode-button-foreground)",
     borderRadius: "10px 10px 2px 10px",
-    padding: "6px 10px",
-    fontSize: "11px",
+    padding: "8px 12px",
+    fontSize: "12px",
     lineHeight: "1.5",
     maxWidth: "85%",
+    animation: `ob-msg-in 0.34s ${OB_EASE}`,
+    transition: `opacity 0.2s ${OB_EASE}, transform 0.2s ${OB_EASE}`,
   },
   typingDots: {
     display: "inline-flex",
-    gap: "3px",
+    gap: "5px",
     fontSize: "14px",
     color: "var(--vscode-descriptionForeground)",
+    alignItems: "center",
+  },
+  typingDot: {
+    animation: "ob-pulse-soft 1.1s ease-in-out infinite",
+  },
+  typingDot2: {
+    animationDelay: "0.18s",
+  },
+  typingDot3: {
+    animationDelay: "0.36s",
   },
   inputRow: {
     display: "flex",
@@ -397,16 +557,18 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--vscode-input-foreground)",
     border: "1px solid var(--vscode-input-border, transparent)",
     borderRadius: "6px",
-    padding: "5px 8px",
-    fontSize: "11px",
+    padding: "6px 10px",
+    fontSize: "12px",
+    minHeight: "28px",
     fontFamily: "var(--vscode-font-family)",
     resize: "none",
     outline: "none",
     lineHeight: "1.4",
+    transition: `border-color 0.22s ${OB_EASE}, box-shadow 0.22s ${OB_EASE}`,
   },
   sendBtn: {
-    width: "26px",
-    height: "26px",
+    width: "30px",
+    height: "30px",
     background: "var(--vscode-button-background)",
     color: "var(--vscode-button-foreground)",
     border: "none",
@@ -417,5 +579,6 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
+    transition: `opacity 0.2s ${OB_EASE}, transform 0.15s ${OB_EASE}, background 0.2s ${OB_EASE}`,
   },
 };

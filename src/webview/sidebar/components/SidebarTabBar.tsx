@@ -1,4 +1,5 @@
 import React from "react";
+import { OB_EASE } from "../motion";
 
 export type SidebarTabId = "guide" | "tour" | "style";
 
@@ -8,8 +9,8 @@ interface TabDef {
 }
 
 const TABS: TabDef[] = [
-  { id: "guide", label: "Guide" },
   { id: "tour", label: "Tour" },
+  { id: "guide", label: "Guide" },
   { id: "style", label: "Style" },
 ];
 
@@ -63,15 +64,18 @@ const styles: Record<string, React.CSSProperties> = {
     border: "none",
     borderRadius: "6px",
     cursor: "pointer",
-    transition: "background 0.12s ease, color 0.12s ease",
+    transition: `background 0.24s ${OB_EASE}, color 0.24s ${OB_EASE}, box-shadow 0.24s ${OB_EASE}, transform 0.2s ${OB_EASE}`,
   },
   tabActive: {
     color: "var(--vscode-foreground)",
     background: "var(--vscode-editorWidget-background, rgba(255,255,255,0.06))",
     boxShadow: "inset 0 0 0 1px var(--vscode-widget-border, rgba(255,255,255,0.08))",
+    transform: "translateY(-0.5px)",
   },
   tabIdle: {
     color: "var(--vscode-descriptionForeground)",
     background: "transparent",
+    transform: "translateY(0)",
+    boxShadow: "none",
   },
 };

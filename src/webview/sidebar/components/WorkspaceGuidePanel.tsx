@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { OB_EASE } from "../motion";
 import type {
   MeResponse,
   StyleGuideEffectiveSource,
@@ -151,6 +152,7 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
+    transition: `background 0.22s ${OB_EASE}, border-color 0.22s ${OB_EASE}, transform 0.18s ${OB_EASE}`,
   },
   note: {
     fontSize: "11px",

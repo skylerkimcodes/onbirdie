@@ -1,8 +1,11 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { MeResponse } from "../../../lib/types";
+import { ConfettiBurst } from "./ConfettiBurst";
+import { OB_EASE } from "../motion";
 import { requestPlanGenerate, requestPlanStep } from "../vscodeBridge";
 
-const XP_PER_QUEST = 35;
+/** Points for a full run cap at this (split across birdies). */
+const MAX_RUN_POINTS = 100;
 
 function truncateTitle(s: string, max: number): string {
   const t = s.trim();
@@ -18,11 +21,6 @@ function truncateBody(s: string | undefined, max: number): string {
     return t;
   }
   return `${t.slice(0, max - 1)}…`;
-}
-
-function compactTaskTitle(title: string | undefined): string {
-  const t = (title ?? "").trim();
-  return t || "Task";
 }
 
 interface RankInfo {
@@ -60,14 +58,15 @@ interface Props {
 export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded }) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  const [confettiTick, setConfettiTick] = useState(0);
+  const prevDoneRef = useRef<number | undefined>(undefined);
 
   const plan = me.onboarding_plan;
-  const tasks = me.onboarding_tasks ?? [];
   const steps = plan?.steps ?? [];
 
   const progress = useMemo(() => {
     if (steps.length === 0) {
-      return { pct: 0, done: 0, total: 0, xp: 0, xpMax: 0 };
+      return { pct: 0, done: 0, total: 0, xp: 0, xpMax: 0, pointsPerBirdie: 0 };
     }
     const done = steps.filter((s) => s.done).length;
     const total = steps.length;
@@ -75,8 +74,9 @@ export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded
       pct: Math.round((done / total) * 100),
       done,
       total,
-      xp: done * XP_PER_QUEST,
-      xpMax: total * XP_PER_QUEST,
+      xp: Math.round((done / total) * MAX_RUN_POINTS),
+      xpMax: MAX_RUN_POINTS,
+      pointsPerBirdie: Math.max(1, Math.round(MAX_RUN_POINTS / total)),
     };
   }, [steps]);
 
@@ -92,26 +92,27 @@ export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded
     return (first?.title ?? "").trim();
   }, [steps]);
 
-  const sortedEmployerTasks = useMemo(
-    () => [...tasks].sort((a, b) => a.sort_order - b.sort_order),
-    [tasks]
-  );
-
   const unifiedSubtitle = useMemo(() => {
-    const nTeam = tasks.length;
     const nRun = progress.total;
     const doneRun = progress.done;
-    if (nTeam > 0 && nRun > 0) {
-      return `${nTeam} team · ${doneRun}/${nRun} birdies`;
-    }
-    if (nTeam > 0) {
-      return `${nTeam} team task${nTeam === 1 ? "" : "s"} · flock below`;
-    }
     if (nRun > 0) {
       return `${doneRun}/${nRun} birdies`;
     }
     return "Start a run to get your flock going";
-  }, [tasks.length, progress.done, progress.total]);
+  }, [progress.done, progress.total]);
+
+  useEffect(() => {
+    const { done, total } = progress;
+    if (total <= 0) {
+      prevDoneRef.current = done;
+      return;
+    }
+    const prev = prevDoneRef.current;
+    prevDoneRef.current = done;
+    if (done === total && prev === total - 1) {
+      setConfettiTick((c) => c + 1);
+    }
+  }, [progress.done, progress.total]);
 
   const runGenerate = async () => {
     setError(undefined);
@@ -164,6 +165,7 @@ export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded
 
   return (
     <div style={wrapStyle}>
+      {confettiTick > 0 ? <ConfettiBurst tick={confettiTick} /> : null}
       <div style={embedded ? { ...styles.headRow, ...styles.headRowEmbedded } : styles.headRow}>
         <div style={styles.titleRow}>
           <div style={styles.titleBlock}>
@@ -172,24 +174,6 @@ export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded
           </div>
         </div>
       </div>
-
-      {sortedEmployerTasks.length > 0 && (
-        <div style={styles.teamSection} aria-label="Employer team tasks">
-          <div style={styles.teamSectionLabel}>Team tasks</div>
-          <ol style={styles.teamOl}>
-            {sortedEmployerTasks.map((t, i) => {
-              const title = compactTaskTitle(t.title);
-              const desc = (t.description ?? "").trim();
-              return (
-                <li key={t.id} style={styles.teamLi} title={desc ? `${title}\n\n${desc}` : title}>
-                  <span style={styles.teamNum}>{i + 1}</span>
-                  <span style={styles.teamTitle}>{title}</span>
-                </li>
-              );
-            })}
-          </ol>
-        </div>
-      )}
 
       {plan?.steps && plan.steps.length > 0 && (
         <>
@@ -201,7 +185,7 @@ export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded
                 </span>
                 <span style={styles.rankLabel}>{rank.label}</span>
               </div>
-              <div style={styles.xpLine} aria-label={`${progress.xp} of ${progress.xpMax} experience points`}>
+              <div style={styles.xpLine} aria-label={`${progress.xp} of ${progress.xpMax} points`}>
                 <span style={styles.xpStrong}>{progress.xp}</span>
                 <span style={styles.xpMuted}>/{progress.xpMax}</span>
               </div>
@@ -283,7 +267,7 @@ export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded
                     </div>
                     {!s.done ? (
                       <span style={styles.xpChip} aria-hidden>
-                        +{XP_PER_QUEST}
+                        +{progress.pointsPerBirdie}
                       </span>
                     ) : (
                       <span style={styles.xpSlot} aria-hidden />
@@ -347,13 +331,6 @@ const styles: Record<string, React.CSSProperties> = {
   headRowEmbedded: {
     marginBottom: "6px",
   },
-  teamSection: {
-    marginBottom: "8px",
-    padding: "6px 8px",
-    borderRadius: "6px",
-    border: "1px solid var(--vscode-widget-border, rgba(255,255,255,0.08))",
-    background: "var(--vscode-editorWidget-background, rgba(255,255,255,0.02))",
-  },
   teamSectionLabel: {
     fontSize: "9px",
     fontWeight: 700,
@@ -361,43 +338,6 @@ const styles: Record<string, React.CSSProperties> = {
     textTransform: "uppercase",
     color: "var(--vscode-descriptionForeground)",
     marginBottom: "5px",
-  },
-  teamOl: {
-    listStyle: "none",
-    margin: 0,
-    padding: 0,
-    display: "flex",
-    flexDirection: "column",
-    gap: "3px",
-  },
-  teamLi: {
-    display: "grid",
-    gridTemplateColumns: "18px 1fr",
-    alignItems: "center",
-    gap: "6px",
-    fontSize: "10px",
-    minWidth: 0,
-    lineHeight: 1.3,
-  },
-  teamNum: {
-    width: "18px",
-    height: "18px",
-    borderRadius: "4px",
-    fontSize: "9px",
-    fontWeight: 700,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "var(--vscode-badge-background)",
-    color: "var(--vscode-badge-foreground)",
-    flexShrink: 0,
-  },
-  teamTitle: {
-    fontWeight: 500,
-    color: "var(--vscode-foreground)",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
   },
   runQuestLabelRow: {
     marginBottom: "6px",
@@ -433,6 +373,8 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: "8px",
     background: "var(--vscode-editorWidget-background, rgba(255,255,255,0.03))",
     border: "1px solid var(--vscode-widget-border, rgba(255,255,255,0.08))",
+    animation: `ob-panel-in 0.4s ${OB_EASE}`,
+    transition: `border-color 0.25s ${OB_EASE}, box-shadow 0.25s ${OB_EASE}`,
   },
   runCardTop: {
     display: "flex",
@@ -483,7 +425,7 @@ const styles: Record<string, React.CSSProperties> = {
     background:
       "linear-gradient(90deg, var(--vscode-textLink-foreground), var(--vscode-progressBar-background, var(--vscode-button-background)))",
     borderRadius: "4px",
-    transition: "width 0.35s ease",
+    transition: `width 0.45s ${OB_EASE}`,
   },
   progressCaption: {
     fontSize: "10px",
@@ -530,6 +472,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--vscode-button-foreground)",
     cursor: "pointer",
     fontFamily: "var(--vscode-font-family)",
+    transition: `opacity 0.22s ${OB_EASE}, transform 0.18s ${OB_EASE}`,
   },
   err: {
     fontSize: "11px",
@@ -550,6 +493,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid var(--vscode-widget-border, rgba(255,255,255,0.1))",
     background: "var(--vscode-sideBar-background)",
     minWidth: 0,
+    transition: `opacity 0.28s ${OB_EASE}, border-color 0.28s ${OB_EASE}, box-shadow 0.28s ${OB_EASE}, transform 0.22s ${OB_EASE}`,
   },
   questCardEmbedded: {
     padding: "5px 6px 4px",
@@ -608,6 +552,7 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     fontFamily: "var(--vscode-font-family)",
     lineHeight: 1,
+    transition: `background 0.22s ${OB_EASE}, color 0.22s ${OB_EASE}, box-shadow 0.22s ${OB_EASE}, transform 0.15s ${OB_EASE}`,
   },
   questIndexBtnDone: {
     background: "transparent",

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { OB_EASE } from "./motion";
 import type { MeResponse, OnboardingProfilePayload } from "../../lib/types";
 import { LoginView } from "./views/LoginView";
 import { ProfileView, Profile } from "./views/ProfileView";
@@ -172,6 +173,7 @@ const loadingStyles: Record<string, React.CSSProperties> = {
     justifyContent: "center",
     height: "100%",
     padding: "24px",
+    animation: `ob-fade-in 0.5s ${OB_EASE}`,
   },
   text: {
     fontSize: "13px",

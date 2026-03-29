@@ -1,53 +1,120 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import type { TourStep } from "../../../lib/types";
 import { openFilePath, requestTourGenerate, requestTourGoto } from "../vscodeBridge";
+
+/** Delay between automatic step advances (startup walkthrough). */
+const AUTO_ADVANCE_MS = 3_500;
 
 interface Props {
   userRole: string;
 }
 
 export const TourTab: React.FC<Props> = ({ userRole }) => {
-  const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [status, setStatus] = useState<"loading" | "done" | "error">("loading");
   const [steps, setSteps] = useState<TourStep[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [error, setError] = useState<string | undefined>();
 
+  const stepsRef = useRef<TourStep[]>([]);
+  stepsRef.current = steps;
+
+  const autoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const clearAutoAdvance = useCallback(() => {
+    if (autoTimerRef.current !== null) {
+      clearInterval(autoTimerRef.current);
+      autoTimerRef.current = null;
+    }
+  }, []);
+
+  const goTo = useCallback(
+    (index: number, fromUser?: boolean) => {
+      if (fromUser) {
+        clearAutoAdvance();
+      }
+      const list = stepsRef.current;
+      const s = list[index];
+      if (!s) {
+        return;
+      }
+      setActiveIndex(index);
+      if (s.absolutePath) {
+        requestTourGoto(s.absolutePath, s.startLine, s.endLine);
+      } else {
+        openFilePath(s.file);
+      }
+    },
+    [clearAutoAdvance]
+  );
+
+  const runTour = useCallback(
+    async (force: boolean) => {
+      clearAutoAdvance();
+      setStatus("loading");
+      setError(undefined);
+      const result = await requestTourGenerate(userRole, { force });
+      if (result.ok) {
+        setSteps(result.steps);
+        setActiveIndex(0);
+        setStatus("done");
+        if (result.steps.length > 0) {
+          const s = result.steps[0];
+          if (s.absolutePath) {
+            requestTourGoto(s.absolutePath, s.startLine, s.endLine);
+          }
+        }
+      } else {
+        setError(result.error);
+        setStatus("error");
+      }
+    },
+    [userRole, clearAutoAdvance]
+  );
+
+  /** Fresh tour on every mount / role change (force bypasses workspace cache). */
   useEffect(() => {
-    void runTour(false);
+    void runTour(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only re-run when role changes
   }, [userRole]);
 
-  const runTour = async (force: boolean) => {
-    setStatus("loading");
-    setError(undefined);
-    const result = await requestTourGenerate(userRole, { force });
-    if (result.ok) {
-      setSteps(result.steps);
-      setActiveIndex(0);
-      setStatus("done");
-      if (result.steps.length > 0) {
-        const s = result.steps[0];
-        if (s.absolutePath) {
-          requestTourGoto(s.absolutePath, s.startLine, s.endLine);
+  /** Slowly advance through steps on each successful load. */
+  useEffect(() => {
+    if (status !== "done" || steps.length <= 1) {
+      return;
+    }
+    const id = window.setInterval(() => {
+      setActiveIndex((prev) => {
+        const list = stepsRef.current;
+        if (list.length === 0) {
+          return prev;
         }
+        if (prev >= list.length - 1) {
+          if (autoTimerRef.current !== null) {
+            clearInterval(autoTimerRef.current);
+            autoTimerRef.current = null;
+          }
+          return prev;
+        }
+        const next = prev + 1;
+        const s = list[next];
+        if (s?.absolutePath) {
+          requestTourGoto(s.absolutePath, s.startLine, s.endLine);
+        } else if (s) {
+          openFilePath(s.file);
+        }
+        return next;
+      });
+    }, AUTO_ADVANCE_MS);
+    autoTimerRef.current = id;
+    return () => {
+      clearInterval(id);
+      if (autoTimerRef.current === id) {
+        autoTimerRef.current = null;
       }
-    } else {
-      setError(result.error);
-      setStatus("error");
-    }
-  };
+    };
+  }, [status, steps.length]);
 
-  const goTo = (index: number) => {
-    const s = steps[index];
-    if (!s) return;
-    setActiveIndex(index);
-    if (s.absolutePath) {
-      requestTourGoto(s.absolutePath, s.startLine, s.endLine);
-    } else {
-      openFilePath(s.file);
-    }
-  };
-
-  if (status === "idle" || status === "error") {
+  if (status === "error") {
     return (
       <div style={styles.container}>
         <div style={styles.emptyState}>
@@ -57,11 +124,9 @@ export const TourTab: React.FC<Props> = ({ userRole }) => {
             OnBirdie will walk you through the key files and patterns in this codebase.
             {!steps.length && " No workspace open? A sample project will be used instead."}
           </p>
-          {status === "error" && error && (
-            <p style={styles.errorText}>{error}</p>
-          )}
+          {error && <p style={styles.errorText}>{error}</p>}
           <button type="button" style={styles.generateBtn} onClick={() => void runTour(true)}>
-            {status === "error" ? "Try again" : "Generate Tour"}
+            Try again
           </button>
         </div>
       </div>
@@ -83,67 +148,72 @@ export const TourTab: React.FC<Props> = ({ userRole }) => {
 
   return (
     <div style={styles.container}>
+      <style>
+        {`
+          @keyframes onbirdieTourCardIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+        `}
+      </style>
       <div style={styles.tourBody}>
-      {/* Dot indicators */}
-      <div style={styles.dots}>
-        {steps.map((_, i) => (
-          <button
-            key={i}
-            type="button"
-            style={{ ...styles.dot, ...(i === activeIndex ? styles.dotActive : {}) }}
-            onClick={() => goTo(i)}
-            title={steps[i].title}
-            aria-label={`Go to step ${i + 1}: ${steps[i].title}`}
-          />
-        ))}
-      </div>
-
-      {/* Current step card */}
-      {current && (
-        <div style={styles.card}>
-          <div style={styles.cardFile}>{current.file}</div>
-          <div style={styles.cardLines}>
-            Lines {current.startLine}–{current.endLine}
-          </div>
-          <div style={styles.cardTitle}>{current.title}</div>
-          <p style={styles.cardExplanation}>{current.explanation}</p>
-          <button
-            type="button"
-            style={styles.openBtn}
-            onClick={() => goTo(activeIndex)}
-          >
-            Open in editor ↗
-          </button>
+        {/* Dot indicators */}
+        <div style={styles.dots}>
+          {steps.map((_, i) => (
+            <button
+              key={i}
+              type="button"
+              style={{ ...styles.dot, ...(i === activeIndex ? styles.dotActive : {}) }}
+              onClick={() => goTo(i, true)}
+              title={steps[i].title}
+              aria-label={`Go to step ${i + 1}: ${steps[i].title}`}
+            />
+          ))}
         </div>
-      )}
 
-      {/* Step list */}
-      <div style={styles.stepList}>
-        {steps.map((s, i) => (
-          <button
-            key={i}
-            type="button"
-            style={{
-              ...styles.stepItem,
-              ...(i === activeIndex ? styles.stepItemActive : {}),
-            }}
-            onClick={() => goTo(i)}
-          >
-            <span style={styles.stepNum}>{i + 1}</span>
-            <span style={styles.stepTitle}>{s.title}</span>
-          </button>
-        ))}
-      </div>
+        {/* Current step card */}
+        {current && (
+          <div key={activeIndex} style={styles.card}>
+            <div style={styles.cardFile}>{current.file}</div>
+            <div style={styles.cardLines}>
+              Lines {current.startLine}–{current.endLine}
+            </div>
+            <div style={styles.cardTitle}>{current.title}</div>
+            <p style={styles.cardExplanation}>{current.explanation}</p>
+            <button type="button" style={styles.openBtn} onClick={() => goTo(activeIndex)}>
+              Open in editor ↗
+            </button>
+          </div>
+        )}
 
-      {/* Restart */}
-      <button type="button" style={styles.restartBtn} onClick={() => {
-        setStatus("idle");
-        setSteps([]);
-        setError(undefined);
-        setActiveIndex(0);
-      }}>
-        ↺ New tour
-      </button>
+        {/* Step list */}
+        <div style={styles.stepList}>
+          {steps.map((s, i) => (
+            <button
+              key={i}
+              type="button"
+              style={{
+                ...styles.stepItem,
+                ...(i === activeIndex ? styles.stepItemActive : {}),
+              }}
+              onClick={() => goTo(i, true)}
+            >
+              <span style={styles.stepNum}>{i + 1}</span>
+              <span style={styles.stepTitle}>{s.title}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Restart */}
+        <button
+          type="button"
+          style={styles.restartBtn}
+          onClick={() => {
+            void runTour(true);
+          }}
+        >
+          ↺ New tour
+        </button>
       </div>
 
       {/* Step counter + nav — pinned to bottom of tour panel */}
@@ -152,7 +222,7 @@ export const TourTab: React.FC<Props> = ({ userRole }) => {
           type="button"
           style={{ ...styles.navBtn, opacity: activeIndex === 0 ? 0.3 : 1 }}
           disabled={activeIndex === 0}
-          onClick={() => goTo(activeIndex - 1)}
+          onClick={() => goTo(activeIndex - 1, true)}
         >
           ‹ Prev
         </button>
@@ -163,7 +233,7 @@ export const TourTab: React.FC<Props> = ({ userRole }) => {
           type="button"
           style={{ ...styles.navBtn, opacity: activeIndex === steps.length - 1 ? 0.3 : 1 }}
           disabled={activeIndex === steps.length - 1}
-          onClick={() => goTo(activeIndex + 1)}
+          onClick={() => goTo(activeIndex + 1, true)}
         >
           Next ›
         </button>
@@ -246,10 +316,13 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: "12px",
     cursor: "pointer",
     fontFamily: "var(--vscode-font-family)",
+    transition: "opacity 0.25s ease, border-color 0.2s ease, background 0.2s ease",
   },
   counter: {
     fontSize: "12px",
     color: "var(--vscode-descriptionForeground)",
+    transition: "opacity 0.2s ease",
+    fontVariantNumeric: "tabular-nums",
   },
   dots: {
     display: "flex",
@@ -265,9 +338,12 @@ const styles: Record<string, React.CSSProperties> = {
     border: "none",
     cursor: "pointer",
     padding: 0,
+    transform: "scale(1)",
+    transition: "background 0.28s ease, transform 0.28s ease",
   },
   dotActive: {
     background: "var(--vscode-focusBorder, var(--vscode-textLink-foreground))",
+    transform: "scale(1.35)",
   },
   card: {
     background: "var(--vscode-editorWidget-background)",
@@ -278,6 +354,8 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     gap: "6px",
     flexShrink: 0,
+    animation: "onbirdieTourCardIn 0.38s ease",
+    transition: "border-color 0.25s ease, box-shadow 0.25s ease",
   },
   cardFile: {
     fontSize: "10px",
@@ -295,12 +373,14 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: "13px",
     fontWeight: 700,
     color: "var(--vscode-foreground)",
+    transition: "color 0.2s ease",
   },
   cardExplanation: {
     fontSize: "12px",
     color: "var(--vscode-foreground)",
     lineHeight: 1.6,
     margin: 0,
+    transition: "opacity 0.25s ease",
   },
   openBtn: {
     alignSelf: "flex-start",
@@ -330,10 +410,13 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     textAlign: "left",
     fontFamily: "var(--vscode-font-family)",
+    transform: "translateX(0)",
+    transition: "background 0.28s ease, border-color 0.28s ease, transform 0.22s ease",
   },
   stepItemActive: {
     background: "var(--vscode-editorWidget-background)",
     border: "1px solid var(--vscode-focusBorder, var(--vscode-textLink-foreground))",
+    transform: "translateX(3px)",
   },
   stepNum: {
     width: "18px",
@@ -346,6 +429,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
+    transition: "background 0.25s ease, color 0.25s ease, transform 0.25s ease",
   },
   stepTitle: {
     fontSize: "12px",

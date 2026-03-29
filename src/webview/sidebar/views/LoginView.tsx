@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { OB_EASE } from "../motion";
 import type { MeResponse } from "../../../lib/types";
 import {
   requestLogin,
@@ -102,7 +103,9 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn }) => {
 
   return (
     <div style={styles.container}>
-      <div style={styles.logo}>🐦</div>
+      <div style={styles.logo} aria-hidden>
+        🐦
+      </div>
       <h1 style={styles.title}>OnBirdie</h1>
       <p style={styles.subtitle}>Your AI onboarding agent</p>
 
@@ -193,11 +196,13 @@ const styles: Record<string, React.CSSProperties> = {
     gap: "8px",
     textAlign: "left",
     overflowY: "auto",
+    animation: `ob-fade-in 0.45s ${OB_EASE}`,
   },
   logo: {
     fontSize: "40px",
     textAlign: "center",
     marginBottom: "4px",
+    animation: `ob-msg-in 0.5s ${OB_EASE}`,
   },
   title: {
     fontSize: "20px",
@@ -226,11 +231,14 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--vscode-foreground)",
     cursor: "pointer",
     fontFamily: "var(--vscode-font-family)",
+    transform: "scale(1)",
+    transition: `background 0.24s ${OB_EASE}, color 0.24s ${OB_EASE}, border-color 0.24s ${OB_EASE}, transform 0.18s ${OB_EASE}`,
   },
   tabActive: {
     background: "var(--vscode-button-background)",
     color: "var(--vscode-button-foreground)",
     borderColor: "var(--vscode-button-background)",
+    transform: "scale(1.01)",
   },
   label: {
     fontSize: "11px",
@@ -248,6 +256,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: "var(--vscode-font-family)",
     outline: "none",
     width: "100%",
+    transition: `border-color 0.22s ${OB_EASE}, box-shadow 0.22s ${OB_EASE}`,
   },
   error: {
     fontSize: "12px",
@@ -265,6 +274,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: "13px",
     fontFamily: "var(--vscode-font-family)",
     width: "100%",
+    transition: `opacity 0.22s ${OB_EASE}, transform 0.18s ${OB_EASE}`,
   },
   hint: {
     fontSize: "11px",
