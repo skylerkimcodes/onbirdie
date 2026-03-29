@@ -17,6 +17,3 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
-
-X = 50;
-print(X);

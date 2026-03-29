@@ -10,4 +10,5 @@ Write-Host "Press Ctrl+C to stop."
 Write-Host ""
 
 Set-Location $backend
-& $venvPython -m uvicorn app.main:app --reload
+# Watch only `app/` so .venv, __pycache__, and random file churn do not constantly reload (or destabilize) the server on Windows.
+& $venvPython -m uvicorn app.main:app --reload --reload-dir app --host 127.0.0.1 --port 8000

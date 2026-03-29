@@ -37,4 +37,9 @@ if (-not (Test-Path $envFile)) {
 }
 
 Write-Host ""
-Write-Host "=== Done! Press F5 to launch. ===" -ForegroundColor Green
+Write-Host "=== Bootstrap finished ===" -ForegroundColor Green
+Write-Host ""
+Write-Host "  • VS Code extension: press F5 (Run Extension) — this does NOT start the API." -ForegroundColor Gray
+Write-Host "  • API server: open a terminal and run:  .\scripts\dev.ps1" -ForegroundColor Cyan
+Write-Host "    Leave that terminal open while you use OnBirdie." -ForegroundColor Gray
+Write-Host ""

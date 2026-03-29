@@ -142,32 +142,6 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn }) => {
         </button>
       </div>
 
-      <div style={styles.authModeRow}>
-        {authMode === "login" ? (
-          <button
-            type="button"
-            style={styles.linkBtn}
-            onClick={() => {
-              setAuthMode("register");
-              setError(undefined);
-            }}
-          >
-            Create account
-          </button>
-        ) : (
-          <button
-            type="button"
-            style={styles.linkBtn}
-            onClick={() => {
-              setAuthMode("login");
-              setError(undefined);
-            }}
-          >
-            Back to sign in
-          </button>
-        )}
-      </div>
-
       <label htmlFor="onbirdie-email" style={styles.label}>Work email</label>
       <input
         id="onbirdie-email"
@@ -260,7 +234,7 @@ const styles: Record<string, React.CSSProperties> = {
   authModeRow: {
     display: "flex",
     justifyContent: "center",
-    marginBottom: "10px",
+    marginTop: "4px",
     minHeight: "22px",
   },
   linkBtn: {
