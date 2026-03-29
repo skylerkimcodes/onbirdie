@@ -19,11 +19,20 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn }) => {
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
   const pendingRef = useRef<"login" | "register" | null>(null);
+  const busyDeadlineRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearBusyDeadline = () => {
+    if (busyDeadlineRef.current !== null) {
+      clearTimeout(busyDeadlineRef.current);
+      busyDeadlineRef.current = null;
+    }
+  };
 
   useEffect(() => {
     return subscribeToExtension((msg: ExtensionToWebviewMessage) => {
       if (msg.type === "auth/loginResult" && pendingRef.current === "login") {
         pendingRef.current = null;
+        clearBusyDeadline();
         setBusy(false);
         if (msg.payload.ok) {
           onLoggedIn(msg.payload.me);
@@ -34,6 +43,7 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn }) => {
       }
       if (msg.type === "auth/registerResult" && pendingRef.current === "register") {
         pendingRef.current = null;
+        clearBusyDeadline();
         setBusy(false);
         if (msg.payload.ok) {
           onLoggedIn(msg.payload.me);
@@ -43,6 +53,10 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn }) => {
       }
     });
   }, [onLoggedIn]);
+
+  useEffect(() => {
+    return () => clearBusyDeadline();
+  }, []);
 
   const submit = () => {
     setError(undefined);
@@ -58,10 +72,28 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn }) => {
         setError("Enter your employer join code (from onboarding).");
         return;
       }
+      clearBusyDeadline();
+      busyDeadlineRef.current = setTimeout(() => {
+        busyDeadlineRef.current = null;
+        if (pendingRef.current === "register") {
+          pendingRef.current = null;
+          setBusy(false);
+          setError("No response from the extension. Try again or reload the window.");
+        }
+      }, 45_000);
       setBusy(true);
       pendingRef.current = "register";
       requestRegister(e, p, code);
     } else {
+      clearBusyDeadline();
+      busyDeadlineRef.current = setTimeout(() => {
+        busyDeadlineRef.current = null;
+        if (pendingRef.current === "login") {
+          pendingRef.current = null;
+          setBusy(false);
+          setError("No response from the extension. Try again or reload the window.");
+        }
+      }, 45_000);
       setBusy(true);
       pendingRef.current = "login";
       requestLogin(e, p);

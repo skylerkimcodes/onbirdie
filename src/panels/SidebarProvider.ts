@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import * as vscode from "vscode";
 import {
   clearOnboardingPlan,
@@ -21,6 +22,46 @@ import { extractResumePlainText } from "../lib/resumeText";
 import { getStagedGitDiff } from "../git/stagedDiff";
 import type { StyleReviewOutcome } from "../styleReviewCore";
 import { runStyleReviewForDiff, writeStyleReviewOutput } from "../styleReviewCore";
+
+const TOUR_CACHE_STATE_KEY = "onbirdie.tourCache.v1";
+
+/** Relative paths under `sample-project/` (tour fallback + style review when no folder is open). */
+const SAMPLE_PROJECT_REL_PATHS = [
+  "index.js",
+  "routes/users.js",
+  "models/user.js",
+  "middleware/auth.js",
+] as const;
+
+/** Persisted tour steps (no absolute paths); paths are re-resolved when served from cache. */
+interface TourCachePayload {
+  fingerprint: string;
+  userRole: string;
+  rawSteps: Array<{
+    file: string;
+    startLine: number;
+    endLine: number;
+    title: string;
+    explanation: string;
+  }>;
+}
+
+function fingerprintTourInputs(
+  userRole: string,
+  files: { path: string; content: string }[]
+): string {
+  const h = createHash("sha256");
+  h.update(userRole.trim());
+  h.update("\0");
+  const sorted = [...files].sort((a, b) => a.path.localeCompare(b.path));
+  for (const f of sorted) {
+    h.update(f.path);
+    h.update("\0");
+    h.update(f.content);
+    h.update("\0");
+  }
+  return h.digest("hex");
+}
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "onbirdie.sidebar";
@@ -199,10 +240,30 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             break;
           }
           case "tour/generate": {
-            const p = message.payload as { userRole?: string } | undefined;
+            const p = message.payload as { userRole?: string; force?: boolean } | undefined;
             const userRole = p?.userRole ?? "";
+            const force = Boolean(p?.force);
             try {
               const { files, pathMap } = await this._collectTourFiles();
+              const fp = fingerprintTourInputs(userRole, files);
+              if (!force) {
+                const cached = this._context.workspaceState.get<TourCachePayload | undefined>(
+                  TOUR_CACHE_STATE_KEY
+                );
+                if (
+                  cached &&
+                  cached.fingerprint === fp &&
+                  cached.userRole === userRole.trim() &&
+                  cached.rawSteps.length > 0
+                ) {
+                  const steps = cached.rawSteps.map((s) => ({
+                    ...s,
+                    absolutePath: pathMap.get(s.file) ?? "",
+                  }));
+                  wv.postMessage({ type: "tour/result", payload: { ok: true, steps } });
+                  break;
+                }
+              }
               const result = await generateTour(secrets, files, userRole);
               if (!result.ok) {
                 wv.postMessage({ type: "tour/result", payload: { ok: false, error: result.error } });
@@ -212,6 +273,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 ...s,
                 absolutePath: pathMap.get(s.file) ?? "",
               }));
+              await this._context.workspaceState.update(TOUR_CACHE_STATE_KEY, {
+                fingerprint: fp,
+                userRole: userRole.trim(),
+                rawSteps: result.rawSteps,
+              });
               wv.postMessage({ type: "tour/result", payload: { ok: true, steps } });
             } catch (e) {
               wv.postMessage({
@@ -315,7 +381,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private async _runStagedStyleReview(): Promise<StyleReviewOutcome> {
     const folder = vscode.workspace.workspaceFolders?.[0];
     if (!folder) {
-      return { ok: false, error: "Open a folder in VS Code (your git repo) first." };
+      const diff = await this._buildSampleProjectUnifiedDiff();
+      if (!diff.trim()) {
+        return { ok: false, error: "Could not load bundled sample project for style review." };
+      }
+      return runStyleReviewForDiff(this._context.secrets, diff);
     }
     const { diff, error: gitError } = await getStagedGitDiff(folder.uri.fsPath);
     if (gitError) {
@@ -331,6 +401,31 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       };
     }
     return runStyleReviewForDiff(this._context.secrets, diff);
+  }
+
+  /** Synthetic `git diff`-style patch from bundled `sample-project` (no workspace / git required). */
+  private async _buildSampleProjectUnifiedDiff(): Promise<string> {
+    const sampleRoot = vscode.Uri.joinPath(this._context.extensionUri, "sample-project");
+    const parts: string[] = [];
+    for (const name of SAMPLE_PROJECT_REL_PATHS) {
+      const uri = vscode.Uri.joinPath(sampleRoot, ...name.split("/"));
+      try {
+        const buf = await vscode.workspace.fs.readFile(uri);
+        const content = Buffer.from(buf).toString("utf8");
+        const lines = content.split(/\r?\n/);
+        parts.push(`diff --git a/${name} b/${name}`);
+        parts.push("--- /dev/null");
+        parts.push(`+++ b/${name}`);
+        parts.push(`@@ -0,0 +1,${lines.length} @@`);
+        for (const line of lines) {
+          parts.push(`+${line}`);
+        }
+        parts.push("");
+      } catch {
+        /* skip missing */
+      }
+    }
+    return parts.join("\n");
   }
 
   private _getHtml(webview: vscode.Webview): string {
@@ -401,11 +496,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     files: { path: string; content: string }[];
     pathMap: Map<string, string>;
   }> {
-    const names = ["index.js", "routes/users.js", "models/user.js", "middleware/auth.js"];
     const sampleRoot = vscode.Uri.joinPath(this._context.extensionUri, "sample-project");
     const files: { path: string; content: string }[] = [];
     const pathMap = new Map<string, string>();
-    for (const name of names) {
+    for (const name of SAMPLE_PROJECT_REL_PATHS) {
       const uri = vscode.Uri.joinPath(sampleRoot, ...name.split("/"));
       try {
         const buf = await vscode.workspace.fs.readFile(uri);

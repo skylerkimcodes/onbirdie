@@ -90,7 +90,7 @@ export const WorkspaceGuidePanel: React.FC<Props> = ({
   }, [hints, hintsNote, tasks.length, plan]);
 
   return (
-    <div style={styles.root} role="tabpanel" aria-labelledby="onbirdie-tab-guide">
+    <div style={styles.root}>
       <div style={styles.panelHeader}>
         <div style={styles.panelTitle}>Guide</div>
         <div style={styles.panelSubtitle}>{subtitle}</div>
@@ -117,22 +117,6 @@ export const WorkspaceGuidePanel: React.FC<Props> = ({
         {hints && hints.length === 0 && hintsNote && (
           <section style={styles.section}>
             <p style={styles.note}>{hintsNote}</p>
-          </section>
-        )}
-
-        {tasks.length > 0 && (
-          <section style={styles.section}>
-            <div style={styles.sectionLabel}>{me.employer.name} — tasks</div>
-            <ol style={styles.taskList}>
-              {[...tasks]
-                .sort((a, b) => a.sort_order - b.sort_order)
-                .map((t) => (
-                  <li key={t.id} style={styles.taskLi}>
-                    <div style={styles.taskTitle}>{t.title}</div>
-                    <div style={styles.taskDesc}>{t.description}</div>
-                  </li>
-                ))}
-            </ol>
           </section>
         )}
 
@@ -270,22 +254,4 @@ const styles: Record<string, React.CSSProperties> = {
     margin: "0 0 8px 0",
     lineHeight: 1.4,
   },
-  taskList: {
-    margin: 0,
-    paddingLeft: "16px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "10px",
-  },
-  taskLi: {
-    fontSize: "11px",
-    lineHeight: 1.5,
-    color: "var(--vscode-foreground)",
-    padding: "8px 10px",
-    borderRadius: "6px",
-    background: "var(--vscode-editorWidget-background, rgba(255,255,255,0.02))",
-    border: "1px solid var(--vscode-widget-border, rgba(255,255,255,0.06))",
-  },
-  taskTitle: { fontWeight: 600, marginBottom: "3px" },
-  taskDesc: { color: "var(--vscode-descriptionForeground)", fontWeight: 400 },
 };

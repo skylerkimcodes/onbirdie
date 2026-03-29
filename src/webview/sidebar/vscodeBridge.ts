@@ -221,10 +221,17 @@ export function openFilePath(fsPath: string): void {
   vscode.postMessage({ type: "openFile", payload: fsPath });
 }
 
-export function requestTourGenerate(userRole: string): Promise<TourGenerateResult> {
+/** @param force When true, always calls the API (e.g. Try again / Generate Tour). When false, reuses a cached tour if inputs are unchanged. */
+export function requestTourGenerate(
+  userRole: string,
+  options?: { force?: boolean }
+): Promise<TourGenerateResult> {
   return new Promise((resolve) => {
     tourResolve = resolve;
-    vscode.postMessage({ type: "tour/generate", payload: { userRole } });
+    vscode.postMessage({
+      type: "tour/generate",
+      payload: { userRole, force: Boolean(options?.force) },
+    });
   });
 }
 

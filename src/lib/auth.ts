@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { apiRequest, apiUploadFile } from "./api";
+import { getApiBaseUrl } from "./config";
 import type {
   ChatApiMessage,
   ChatSendResult,
@@ -81,24 +82,53 @@ export async function fetchMe(secrets: vscode.SecretStorage): Promise<MeResponse
   }
 }
 
+function authFailureMessage(e: unknown): string {
+  const baseUrl = getApiBaseUrl();
+  if (e instanceof Error) {
+    if (e.name === "AbortError") {
+      return `Request timed out to ${baseUrl}. Start the backend or change onbirdie.apiBaseUrl in Settings.`;
+    }
+    const msg = (e.message || "").toLowerCase();
+    const cause = e.cause;
+    const causeMsg = cause instanceof Error ? (cause.message || "").toLowerCase() : "";
+    if (
+      msg === "fetch failed" ||
+      msg.includes("econnrefused") ||
+      msg.includes("enotfound") ||
+      msg.includes("getaddrinfo") ||
+      msg.includes("socket") ||
+      causeMsg.includes("econnrefused") ||
+      causeMsg.includes("connect")
+    ) {
+      return `Could not connect to ${baseUrl}. Start the OnBirdie API (backend) locally or set Settings → OnBirdie → API base URL to match where it runs.`;
+    }
+    return e.message;
+  }
+  return `Could not reach ${baseUrl}. Check your network and API URL in Settings.`;
+}
+
 export async function loginWithCredentials(
   secrets: vscode.SecretStorage,
   email: string,
   password: string
 ): Promise<AuthResult> {
-  const res = await apiRequest("POST", "/api/v1/auth/login", {
-    body: { email: email.trim(), password },
-  });
-  if (!res.ok) {
-    return { ok: false, error: await parseErrorDetail(res) };
+  try {
+    const res = await apiRequest("POST", "/api/v1/auth/login", {
+      body: { email: email.trim(), password },
+    });
+    if (!res.ok) {
+      return { ok: false, error: await parseErrorDetail(res) };
+    }
+    const data = (await res.json()) as { access_token: string };
+    await setAccessToken(secrets, data.access_token);
+    const me = await fetchMe(secrets);
+    if (!me) {
+      return { ok: false, error: "Signed in but could not load account." };
+    }
+    return { ok: true, me };
+  } catch (e) {
+    return { ok: false, error: authFailureMessage(e) };
   }
-  const data = (await res.json()) as { access_token: string };
-  await setAccessToken(secrets, data.access_token);
-  const me = await fetchMe(secrets);
-  if (!me) {
-    return { ok: false, error: "Signed in but could not load account." };
-  }
-  return { ok: true, me };
 }
 
 export async function registerWithCredentials(
@@ -107,23 +137,27 @@ export async function registerWithCredentials(
   password: string,
   employerJoinCode: string
 ): Promise<AuthResult> {
-  const res = await apiRequest("POST", "/api/v1/auth/register", {
-    body: {
-      email: email.trim(),
-      password,
-      employer_join_code: employerJoinCode.trim(),
-    },
-  });
-  if (!res.ok) {
-    return { ok: false, error: await parseErrorDetail(res) };
+  try {
+    const res = await apiRequest("POST", "/api/v1/auth/register", {
+      body: {
+        email: email.trim(),
+        password,
+        employer_join_code: employerJoinCode.trim(),
+      },
+    });
+    if (!res.ok) {
+      return { ok: false, error: await parseErrorDetail(res) };
+    }
+    const data = (await res.json()) as { access_token: string };
+    await setAccessToken(secrets, data.access_token);
+    const me = await fetchMe(secrets);
+    if (!me) {
+      return { ok: false, error: "Account created but could not load profile." };
+    }
+    return { ok: true, me };
+  } catch (e) {
+    return { ok: false, error: authFailureMessage(e) };
   }
-  const data = (await res.json()) as { access_token: string };
-  await setAccessToken(secrets, data.access_token);
-  const me = await fetchMe(secrets);
-  if (!me) {
-    return { ok: false, error: "Account created but could not load profile." };
-  }
-  return { ok: true, me };
 }
 
 export async function signOut(

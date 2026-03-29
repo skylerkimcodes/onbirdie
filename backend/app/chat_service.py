@@ -61,7 +61,7 @@ async def _chat_via_k2(
     llm = ChatOpenAI(
         base_url=_k2_base_url(),
         api_key=settings.k2_api_key,
-        model=(settings.k2_model or "k2-think-v2").strip(),
+        model=(settings.k2_model or "MBZUAI-IFM/K2-Think-v2").strip(),
         temperature=temperature,
     )
     lc_messages = _openai_messages_to_lc(messages)

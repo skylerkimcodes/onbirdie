@@ -16,6 +16,19 @@ function truncateTitle(s: string, max: number): string {
   return `${t.slice(0, max - 1)}…`;
 }
 
+function truncateBody(s: string | undefined, max: number): string {
+  const t = (s ?? "").trim();
+  if (t.length <= max) {
+    return t;
+  }
+  return `${t.slice(0, max - 1)}…`;
+}
+
+function compactTaskTitle(title: string | undefined): string {
+  const t = (title ?? "").trim();
+  return t || "Task";
+}
+
 interface RankInfo {
   label: string;
   emoji: string;
@@ -84,6 +97,27 @@ export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded
     return (first?.title ?? "").trim();
   }, [steps]);
 
+  const sortedEmployerTasks = useMemo(
+    () => [...tasks].sort((a, b) => a.sort_order - b.sort_order),
+    [tasks]
+  );
+
+  const unifiedSubtitle = useMemo(() => {
+    const nTeam = tasks.length;
+    const nRun = progress.total;
+    const doneRun = progress.done;
+    if (nTeam > 0 && nRun > 0) {
+      return `${nTeam} team · ${doneRun}/${nRun} quests`;
+    }
+    if (nTeam > 0) {
+      return `${nTeam} team task${nTeam === 1 ? "" : "s"} · run below`;
+    }
+    if (nRun > 0) {
+      return `${doneRun}/${nRun} quests`;
+    }
+    return "Start a run to track your first week";
+  }, [tasks.length, progress.done, progress.total]);
+
   const runGenerate = async () => {
     setError(undefined);
     setBusy(true);
@@ -129,66 +163,96 @@ export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded
     }
   };
 
+  const wrapStyle = embedded ? { ...styles.wrap, ...styles.wrapEmbedded } : styles.wrap;
+
   return (
-    <div style={embedded ? { ...styles.wrap, ...styles.wrapEmbedded } : styles.wrap}>
-      <div style={styles.headRow}>
+    <div style={wrapStyle}>
+      <div style={embedded ? { ...styles.headRow, ...styles.headRowEmbedded } : styles.headRow}>
         <div style={styles.titleRow}>
           <div style={styles.titleBlock}>
-            <div style={styles.title}>Onboarding run</div>
-            <div style={styles.sub}>
-              Quests are bite-sized wins — check one off, earn XP, level up your first week.
-            </div>
+            <div style={styles.title}>Onboarding</div>
+            <div style={styles.sub}>{unifiedSubtitle}</div>
           </div>
         </div>
       </div>
+
+      {sortedEmployerTasks.length > 0 && (
+        <div style={styles.teamSection} aria-label="Employer team tasks">
+          <div style={styles.teamSectionLabel}>Team tasks</div>
+          <ol style={styles.teamOl}>
+            {sortedEmployerTasks.map((t, i) => {
+              const title = compactTaskTitle(t.title);
+              const desc = (t.description ?? "").trim();
+              return (
+                <li key={t.id} style={styles.teamLi} title={desc ? `${title}\n\n${desc}` : title}>
+                  <span style={styles.teamNum}>{i + 1}</span>
+                  <span style={styles.teamTitle}>{title}</span>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      )}
 
       {plan?.steps && plan.steps.length > 0 && (
         <>
           <div style={styles.runCard}>
             <div style={styles.runCardTop}>
-              <div style={styles.rankPill} title="Rank changes as you complete quests">
+              <div style={styles.rankPill} title="Rank updates as you complete quests">
                 <span style={styles.rankEmoji} aria-hidden>
                   {rank.emoji}
                 </span>
                 <span style={styles.rankLabel}>{rank.label}</span>
               </div>
-              <div style={styles.xpLine}>
+              <div style={styles.xpLine} aria-label={`${progress.xp} of ${progress.xpMax} experience points`}>
                 <span style={styles.xpStrong}>{progress.xp}</span>
-                <span style={styles.xpMuted}> / {progress.xpMax} XP</span>
+                <span style={styles.xpMuted}>/{progress.xpMax}</span>
               </div>
             </div>
-            <div style={styles.progressTrack} aria-hidden>
+            <div style={styles.progressTrack} role="progressbar" aria-valuenow={progress.pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${progress.pct} percent complete`}>
               <div style={{ ...styles.progressFill, width: `${progress.pct}%` }} />
             </div>
             <div style={styles.progressCaption}>
               {progress.done === progress.total ? (
-                <span style={styles.winText}>Run complete — nice work.</span>
+                <span style={styles.winText}>All quests done.</span>
               ) : (
                 <>
                   <span>
-                    {progress.done}/{progress.total} quests
+                    {progress.done}/{progress.total}
                   </span>
                   <span style={styles.dotSep}>·</span>
-                  <span>{progress.pct}% cleared</span>
+                  <span>{progress.pct}%</span>
                 </>
               )}
             </div>
-            {progress.done < progress.total && nextStepTitle ? (
+            {!embedded && progress.done < progress.total && nextStepTitle ? (
               <div style={styles.nextUpBlock}>
-                <div style={styles.nextUpLabel}>Next up</div>
-                <div style={styles.nextUpTitle}>{truncateTitle(nextStepTitle, 120)}</div>
+                <div style={styles.nextUpLabel}>Next</div>
+                <div style={styles.nextUpTitle} title={nextStepTitle}>
+                  {truncateTitle(nextStepTitle, 72)}
+                </div>
               </div>
             ) : null}
           </div>
 
+          {embedded ? (
+            <div style={styles.runQuestLabelRow}>
+              <span style={styles.teamSectionLabel}>Run quests</span>
+            </div>
+          ) : null}
+
           <ul style={styles.stepList}>
             {plan.steps.map((s, i) => {
               const isNext = !s.done && s.id === nextStepId;
+              const detail = (s.detail ?? "").trim();
+              const guide = (s.guidance ?? "").trim();
+              const questTip = [detail, guide].filter(Boolean).join("\n\n");
               return (
                 <li
                   key={s.id}
                   style={{
                     ...styles.questCard,
+                    ...(embedded ? styles.questCardEmbedded : {}),
                     ...(s.done ? styles.questCardDone : {}),
                     ...(isNext ? styles.questCardNext : {}),
                   }}
@@ -203,23 +267,34 @@ export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded
                         checked={s.done}
                         disabled={busy}
                         onChange={(e) => toggleStep(s.id, e.target.checked)}
+                        aria-label={s.done ? `Mark incomplete: ${s.title}` : `Mark complete: ${s.title}`}
                       />
-                      <span style={{ ...styles.stepTitle, ...(s.done ? styles.stepTitleDone : {}) }}>
-                        {s.title}
+                      <span
+                        style={{ ...styles.stepTitle, ...(s.done ? styles.stepTitleDone : {}) }}
+                        title={embedded && questTip ? questTip : undefined}
+                      >
+                        {(s.title ?? "").trim() || "Quest"}
                       </span>
                     </label>
-                    {s.done ? (
-                      <span style={styles.clearedChip}>Cleared</span>
-                    ) : (
+                    {!s.done ? (
                       <span style={styles.xpChip} aria-hidden>
-                        +{XP_PER_QUEST} XP
+                        +{XP_PER_QUEST}
+                      </span>
+                    ) : (
+                      <span style={styles.clearedChip} aria-label="Completed">
+                        ✓
                       </span>
                     )}
                   </div>
-                  <p style={styles.stepDetail}>{s.detail}</p>
-                  {s.guidance ? (
-                    <p style={styles.guidance}>
-                      <span style={styles.guidanceMark}>💡</span> {s.guidance}
+                  {!embedded && detail ? (
+                    <p style={styles.stepDetail} title={detail}>
+                      {truncateBody(s.detail, 220)}
+                    </p>
+                  ) : null}
+                  {!embedded && guide ? (
+                    <p style={styles.guidance} title={guide}>
+                      <span style={styles.guidanceMark}>Tip · </span>
+                      {truncateBody(s.guidance, 180)}
                     </p>
                   ) : null}
                 </li>
@@ -229,10 +304,20 @@ export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded
         </>
       )}
 
-      <div style={steps.length > 0 ? styles.planControls : styles.planControlsFirst}>
+      <div
+        style={
+          steps.length > 0
+            ? embedded
+              ? { ...styles.planControls, ...styles.planControlsEmbedded }
+              : styles.planControls
+            : embedded
+              ? { ...styles.planControlsFirst, ...styles.planControlsEmbedded }
+              : styles.planControlsFirst
+        }
+      >
         {tasks.length > 0 && (
           <label style={styles.focusLabel}>
-            Focus employer task (optional)
+            Focus task (optional)
             <select
               style={styles.select}
               value={focusId}
@@ -285,7 +370,66 @@ const styles: Record<string, React.CSSProperties> = {
     maxHeight: "none",
   },
   headRow: {
-    marginBottom: "10px",
+    marginBottom: "8px",
+  },
+  headRowEmbedded: {
+    marginBottom: "4px",
+  },
+  teamSection: {
+    marginBottom: "8px",
+    padding: "6px 8px",
+    borderRadius: "6px",
+    border: "1px solid var(--vscode-widget-border, rgba(255,255,255,0.08))",
+    background: "var(--vscode-editorWidget-background, rgba(255,255,255,0.02))",
+  },
+  teamSectionLabel: {
+    fontSize: "9px",
+    fontWeight: 700,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    color: "var(--vscode-descriptionForeground)",
+    marginBottom: "5px",
+  },
+  teamOl: {
+    listStyle: "none",
+    margin: 0,
+    padding: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: "3px",
+  },
+  teamLi: {
+    display: "grid",
+    gridTemplateColumns: "18px 1fr",
+    alignItems: "center",
+    gap: "6px",
+    fontSize: "10px",
+    minWidth: 0,
+    lineHeight: 1.3,
+  },
+  teamNum: {
+    width: "18px",
+    height: "18px",
+    borderRadius: "4px",
+    fontSize: "9px",
+    fontWeight: 700,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "var(--vscode-badge-background)",
+    color: "var(--vscode-badge-foreground)",
+    flexShrink: 0,
+  },
+  teamTitle: {
+    fontWeight: 500,
+    color: "var(--vscode-foreground)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  runQuestLabelRow: {
+    marginBottom: "5px",
+    marginTop: "-2px",
   },
   titleRow: {
     display: "flex",
@@ -308,13 +452,13 @@ const styles: Record<string, React.CSSProperties> = {
   },
   sub: {
     fontSize: "10px",
-    lineHeight: 1.5,
+    lineHeight: 1.4,
     color: "var(--vscode-descriptionForeground)",
   },
   runCard: {
-    borderRadius: "8px",
-    padding: "10px 10px 8px",
-    marginBottom: "12px",
+    borderRadius: "6px",
+    padding: "8px 8px 6px",
+    marginBottom: "8px",
     background: "var(--vscode-editorWidget-background, rgba(255,255,255,0.03))",
     border: "1px solid var(--vscode-widget-border, rgba(255,255,255,0.08))",
   },
@@ -322,8 +466,8 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: "8px",
-    marginBottom: "8px",
+    gap: "6px",
+    marginBottom: "6px",
     flexWrap: "wrap",
   },
   rankPill: {
@@ -357,8 +501,8 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 500,
   },
   progressTrack: {
-    height: "8px",
-    borderRadius: "4px",
+    height: "5px",
+    borderRadius: "3px",
     background: "var(--vscode-input-background)",
     overflow: "hidden",
   },
@@ -372,7 +516,7 @@ const styles: Record<string, React.CSSProperties> = {
   progressCaption: {
     fontSize: "10px",
     color: "var(--vscode-descriptionForeground)",
-    marginTop: "6px",
+    marginTop: "5px",
     display: "flex",
     alignItems: "center",
     flexWrap: "wrap",
@@ -393,6 +537,10 @@ const styles: Record<string, React.CSSProperties> = {
   },
   planControlsFirst: {
     marginTop: "6px",
+  },
+  planControlsEmbedded: {
+    marginTop: "8px",
+    paddingTop: "8px",
   },
   focusLabel: {
     display: "flex",
@@ -452,13 +600,17 @@ const styles: Record<string, React.CSSProperties> = {
     margin: 0,
     display: "flex",
     flexDirection: "column",
-    gap: "8px",
+    gap: "6px",
   },
   questCard: {
-    borderRadius: "8px",
-    padding: "10px 10px 8px 10px",
+    borderRadius: "6px",
+    padding: "8px 8px 6px",
     border: "1px solid var(--vscode-widget-border, rgba(255,255,255,0.1))",
     background: "var(--vscode-sideBar-background)",
+    minWidth: 0,
+  },
+  questCardEmbedded: {
+    padding: "5px 6px 4px",
   },
   questCardDone: {
     opacity: 0.88,
@@ -469,8 +621,8 @@ const styles: Record<string, React.CSSProperties> = {
     boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.06)",
   },
   nextUpBlock: {
-    marginTop: "8px",
-    paddingTop: "8px",
+    marginTop: "6px",
+    paddingTop: "6px",
     borderTop: "1px solid var(--vscode-widget-border, rgba(255,255,255,0.06))",
   },
   nextUpLabel: {
@@ -479,26 +631,29 @@ const styles: Record<string, React.CSSProperties> = {
     letterSpacing: "0.06em",
     textTransform: "uppercase",
     color: "var(--vscode-textLink-foreground)",
-    marginBottom: "4px",
+    marginBottom: "2px",
   },
   nextUpTitle: {
-    fontSize: "11px",
+    fontSize: "10px",
     fontWeight: 600,
-    lineHeight: 1.4,
+    lineHeight: 1.35,
     color: "var(--vscode-foreground)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
   },
   questHead: {
     display: "grid",
-    gridTemplateColumns: "22px 1fr auto",
+    gridTemplateColumns: "20px 1fr auto",
     alignItems: "start",
-    gap: "8px",
-    marginBottom: "4px",
+    gap: "6px",
+    marginBottom: "2px",
   },
   questIndex: {
-    width: "22px",
-    height: "22px",
+    width: "20px",
+    height: "20px",
     borderRadius: "999px",
-    fontSize: "10px",
+    fontSize: "9px",
     fontWeight: 700,
     display: "flex",
     alignItems: "center",
@@ -510,8 +665,8 @@ const styles: Record<string, React.CSSProperties> = {
   stepLabel: {
     display: "flex",
     alignItems: "flex-start",
-    gap: "8px",
-    fontSize: "12px",
+    gap: "6px",
+    fontSize: "11px",
     fontWeight: 600,
     color: "var(--vscode-foreground)",
     cursor: "pointer",
@@ -520,43 +675,51 @@ const styles: Record<string, React.CSSProperties> = {
   stepTitle: {
     flex: 1,
     lineHeight: 1.35,
+    wordBreak: "break-word",
   },
   stepTitleDone: {
     fontWeight: 500,
     color: "var(--vscode-descriptionForeground)",
   },
   clearedChip: {
-    fontSize: "9px",
+    fontSize: "11px",
     fontWeight: 700,
-    letterSpacing: "0.04em",
-    textTransform: "uppercase",
     color: "var(--vscode-testing-iconPassed, var(--vscode-gitDecoration-addedResourceForeground, #73c991))",
-    paddingTop: "2px",
+    paddingTop: "1px",
     flexShrink: 0,
+    lineHeight: 1,
   },
   xpChip: {
     fontSize: "9px",
     fontWeight: 700,
-    letterSpacing: "0.03em",
+    letterSpacing: "0.02em",
     color: "var(--vscode-textLink-foreground)",
     opacity: 0.9,
-    paddingTop: "2px",
+    paddingTop: "1px",
     flexShrink: 0,
   },
   stepDetail: {
-    fontSize: "11px",
-    lineHeight: 1.5,
-    color: "var(--vscode-descriptionForeground)",
-    margin: "0 0 0 30px",
-  },
-  guidance: {
     fontSize: "10px",
     lineHeight: 1.45,
     color: "var(--vscode-descriptionForeground)",
-    margin: "6px 0 0 30px",
+    margin: "4px 0 0 0",
+    paddingLeft: "26px",
   },
+  guidance: {
+    fontSize: "10px",
+    lineHeight: 1.4,
+    color: "var(--vscode-descriptionForeground)",
+    margin: "4px 0 0 0",
+    paddingLeft: "26px",
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+    wordBreak: "break-word",
+  } as React.CSSProperties,
   guidanceMark: {
-    marginRight: "4px",
-    opacity: 0.85,
+    fontWeight: 700,
+    color: "var(--vscode-textLink-foreground)",
+    marginRight: "2px",
   },
 };
