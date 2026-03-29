@@ -26,6 +26,12 @@ def _normalize_steps(raw: list[Any]) -> list[dict[str, Any]]:
         title = str(item.get("title") or "").strip()
         detail = str(item.get("detail") or "").strip()
         guidance = str(item.get("guidance") or "").strip()
+        diff_raw = item.get("difficulty", 3)
+        try:
+            di = int(float(diff_raw))
+        except (TypeError, ValueError):
+            di = 3
+        di = max(1, min(5, di))
         if not title or not detail:
             continue
         out.append(
@@ -34,6 +40,7 @@ def _normalize_steps(raw: list[Any]) -> list[dict[str, Any]]:
                 "title": title[:300],
                 "detail": detail[:2000],
                 "guidance": guidance[:500],
+                "difficulty": di,
                 "done": False,
             }
         )
@@ -79,10 +86,12 @@ async def generate_onboarding_plan_steps(
         "You are an onboarding planner for software teams. "
         "Output a single JSON object only — no markdown fences, no commentary. "
         'Schema: {"steps": [{"id": "kebab-case-id", "title": "string", '
-        '"detail": "string", "guidance": "string"}]}. '
+        '"detail": "string", "guidance": "string", "difficulty": 3}]}. '
         "Produce 6–10 ordered steps. Each step must be actionable in 1–3 sentences in detail. "
         "guidance is one short sentence: how to approach it when the codebase is unfamiliar "
         "(e.g. search, ask, read tests). "
+        "difficulty is an integer 1–5: 1 = quick win / low complexity, 5 = substantial effort, "
+        "scope, or ambiguity. Vary difficulty across steps; not all 3. "
         "Do not invent specific file paths or repo names."
     )
 

@@ -56,6 +56,12 @@ class PlanStepPublic(BaseModel):
     detail: str
     guidance: str = ""
     done: bool = False
+    difficulty: int = Field(
+        default=3,
+        ge=1,
+        le=5,
+        description="1 = lightest lift, 5 = hardest; weights share of 100 run points.",
+    )
 
 
 class OnboardingPlanPublic(BaseModel):

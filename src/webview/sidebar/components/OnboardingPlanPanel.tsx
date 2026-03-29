@@ -7,6 +7,38 @@ import { requestPlanGenerate, requestPlanStep } from "../vscodeBridge";
 /** Points for a full run cap at this (split across birdies). */
 const MAX_RUN_POINTS = 100;
 
+function clampDifficulty(d: number | undefined): number {
+  if (d == null || Number.isNaN(d)) {
+    return 3;
+  }
+  return Math.min(5, Math.max(1, Math.round(d)));
+}
+
+/** Split `total` integer points across steps proportionally to weights; sums exactly to `total`. */
+function allocatePointsByWeights(weights: number[], total: number): number[] {
+  const n = weights.length;
+  if (n === 0) {
+    return [];
+  }
+  const sumW = weights.reduce((a, b) => a + b, 0);
+  if (sumW <= 0) {
+    const base = Math.floor(total / n);
+    const rem = total - base * n;
+    return weights.map((_, i) => base + (i < rem ? 1 : 0));
+  }
+  const exact = weights.map((w) => (w / sumW) * total);
+  const floors = exact.map((x) => Math.floor(x));
+  const allocated = floors.reduce((a, b) => a + b, 0);
+  let remainder = total - allocated;
+  const order = exact.map((x, i) => ({ i, frac: x - Math.floor(x) }));
+  order.sort((a, b) => b.frac - a.frac);
+  const result = [...floors];
+  for (let k = 0; k < remainder; k++) {
+    result[order[k].i] += 1;
+  }
+  return result;
+}
+
 function truncateTitle(s: string, max: number): string {
   const t = s.trim();
   if (t.length <= max) {
@@ -66,17 +98,26 @@ export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded
 
   const progress = useMemo(() => {
     if (steps.length === 0) {
-      return { pct: 0, done: 0, total: 0, xp: 0, xpMax: 0, pointsPerBirdie: 0 };
+      return { pct: 0, done: 0, total: 0, xp: 0, xpMax: MAX_RUN_POINTS, stepPoints: [] as number[] };
+    }
+    const weights = steps.map((s) => clampDifficulty(s.difficulty));
+    const stepPoints = allocatePointsByWeights(weights, MAX_RUN_POINTS);
+    let xp = 0;
+    for (let i = 0; i < steps.length; i++) {
+      if (steps[i].done) {
+        xp += stepPoints[i];
+      }
     }
     const done = steps.filter((s) => s.done).length;
     const total = steps.length;
+    const pct = Math.round((xp / MAX_RUN_POINTS) * 100);
     return {
-      pct: Math.round((done / total) * 100),
+      pct,
       done,
       total,
-      xp: Math.round((done / total) * MAX_RUN_POINTS),
+      xp,
       xpMax: MAX_RUN_POINTS,
-      pointsPerBirdie: Math.max(1, Math.round(MAX_RUN_POINTS / total)),
+      stepPoints,
     };
   }, [steps]);
 
@@ -266,8 +307,8 @@ export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded
                       </span>
                     </div>
                     {!s.done ? (
-                      <span style={styles.xpChip} aria-hidden>
-                        +{progress.pointsPerBirdie}
+                      <span style={styles.xpChip} aria-hidden title={`Worth ${progress.stepPoints[i]} pts`}>
+                        +{progress.stepPoints[i] ?? 0}
                       </span>
                     ) : (
                       <span style={styles.xpSlot} aria-hidden />

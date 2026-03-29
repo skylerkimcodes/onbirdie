@@ -48,6 +48,8 @@ export interface PlanStepPublic {
   detail: string;
   guidance: string;
   done: boolean;
+  /** 1–5 from the planner; weights how many of the 100 points this birdie is worth. */
+  difficulty?: number;
 }
 
 export interface OnboardingPlanPublic {

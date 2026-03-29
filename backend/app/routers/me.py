@@ -57,6 +57,12 @@ def _onboarding_plan_public(user: dict) -> OnboardingPlanPublic | None:
         detail = str(s.get("detail") or "").strip()
         if not sid or not title or not detail:
             continue
+        diff_raw = s.get("difficulty", 3)
+        try:
+            di = int(float(diff_raw))
+        except (TypeError, ValueError):
+            di = 3
+        di = max(1, min(5, di))
         steps.append(
             PlanStepPublic(
                 id=sid,
@@ -64,6 +70,7 @@ def _onboarding_plan_public(user: dict) -> OnboardingPlanPublic | None:
                 detail=detail,
                 guidance=str(s.get("guidance") or "")[:500],
                 done=bool(s.get("done")),
+                difficulty=di,
             )
         )
     if not steps:
