@@ -259,16 +259,21 @@ export const ChatView: React.FC<ChatViewProps> = ({ me, profile, onMeUpdated, on
       <SidebarTabBar active={activeTab} onChange={setActiveTab} />
 
       <div ref={mainSplitRef} style={styles.mainSplit}>
-        {activeTab === "tour" ? (
-          <div
-            key="tour"
-            style={styles.tabPanelAnimated}
-            role="tabpanel"
-            aria-labelledby="onbirdie-tab-tour"
-          >
-            <TourTab userRole={profile.role} />
-          </div>
-        ) : activeTab === "style" ? (
+        {/* Keep tour mounted so tab switches do not re-run AI generation (cache: tour/generate force=false). */}
+        <div
+          style={{
+            ...styles.tabPanel,
+            display: activeTab === "tour" ? "flex" : "none",
+          }}
+          hidden={activeTab !== "tour"}
+          aria-hidden={activeTab !== "tour"}
+          role="tabpanel"
+          aria-labelledby="onbirdie-tab-tour"
+          id="onbirdie-panel-tour"
+        >
+          <TourTab userRole={profile.role} isActive={activeTab === "tour"} />
+        </div>
+        {activeTab === "style" ? (
           <div
             key="style"
             style={styles.tabPanelAnimated}

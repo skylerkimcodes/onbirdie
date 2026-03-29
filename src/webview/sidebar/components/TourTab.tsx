@@ -7,9 +7,11 @@ const AUTO_ADVANCE_MS = 3_500;
 
 interface Props {
   userRole: string;
+  /** False when another sidebar tab is selected — avoids background auto-advance opening files. */
+  isActive: boolean;
 }
 
-export const TourTab: React.FC<Props> = ({ userRole }) => {
+export const TourTab: React.FC<Props> = ({ userRole, isActive }) => {
   const [status, setStatus] = useState<"loading" | "done" | "error">("loading");
   const [steps, setSteps] = useState<TourStep[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -112,7 +114,7 @@ export const TourTab: React.FC<Props> = ({ userRole }) => {
         autoTimerRef.current = null;
       }
     };
-  }, [status, steps.length]);
+  }, [status, steps.length, isActive, clearAutoAdvance]);
 
   if (status === "error") {
     return (

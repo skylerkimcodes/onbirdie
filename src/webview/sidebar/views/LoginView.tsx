@@ -14,7 +14,10 @@ interface Props {
 }
 
 export const LoginView: React.FC<Props> = ({ onLoggedIn }) => {
-  const [mode, setMode] = useState<"login" | "register" | "employer">("login");
+  /** Top-level: employee sign-in vs employer admin portal */
+  const [topTab, setTopTab] = useState<"user" | "admin">("user");
+  /** Under Sign in: login form vs registration */
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [joinCode, setJoinCode] = useState("");
@@ -71,7 +74,7 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn }) => {
       setError("Enter email and password.");
       return;
     }
-    if (mode === "register") {
+    if (authMode === "register") {
       const code = joinCode.trim();
       if (code.length < 4) {
         setError("Enter your employer join code (from onboarding).");
@@ -105,8 +108,8 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn }) => {
     }
   };
 
-  if (mode === "employer") {
-    return <EmployerPortalView onBack={() => setMode("login")} />;
+  if (topTab === "admin") {
+    return <EmployerPortalView onBack={() => setTopTab("user")} />;
   }
 
   return (
@@ -120,9 +123,8 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn }) => {
       <div style={styles.tabs}>
         <button
           type="button"
-          style={{ ...styles.tab, ...(mode === "login" ? styles.tabActive : {}) }}
+          style={{ ...styles.tab, ...styles.tabActive }}
           onClick={() => {
-            setMode("login");
             setError(undefined);
           }}
         >
@@ -130,24 +132,40 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn }) => {
         </button>
         <button
           type="button"
-          style={{ ...styles.tab, ...(mode === "register" ? styles.tabActive : {}) }}
-          onClick={() => {
-            setMode("register");
-            setError(undefined);
-          }}
-        >
-          Create account
-        </button>
-        <button
-          type="button"
           style={styles.tab}
           onClick={() => {
-            setMode("employer");
+            setTopTab("admin");
             setError(undefined);
           }}
         >
-          Employer
+          Admin sign in
         </button>
+      </div>
+
+      <div style={styles.authModeRow}>
+        {authMode === "login" ? (
+          <button
+            type="button"
+            style={styles.linkBtn}
+            onClick={() => {
+              setAuthMode("register");
+              setError(undefined);
+            }}
+          >
+            Create account
+          </button>
+        ) : (
+          <button
+            type="button"
+            style={styles.linkBtn}
+            onClick={() => {
+              setAuthMode("login");
+              setError(undefined);
+            }}
+          >
+            Back to sign in
+          </button>
+        )}
       </div>
 
       <label htmlFor="onbirdie-email" style={styles.label}>Work email</label>
@@ -167,14 +185,14 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn }) => {
         id="onbirdie-password"
         style={styles.input}
         type="password"
-        autoComplete={mode === "login" ? "current-password" : "new-password"}
-        placeholder={mode === "register" ? "At least 8 characters" : "••••••••"}
+        autoComplete={authMode === "login" ? "current-password" : "new-password"}
+        placeholder={authMode === "register" ? "At least 8 characters" : "••••••••"}
         value={password}
         onChange={(ev) => setPassword(ev.target.value)}
         disabled={busy}
       />
 
-      {mode === "register" && (
+      {authMode === "register" && (
         <>
           <label htmlFor="onbirdie-joincode" style={styles.label}>Employer join code</label>
           <input
@@ -193,7 +211,7 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn }) => {
       {error && <p style={styles.error}>{error}</p>}
 
       <button type="button" style={styles.button} disabled={busy} onClick={submit}>
-        {busy ? "Please wait…" : mode === "login" ? "Sign in" : "Create account"}
+        {busy ? "Please wait…" : authMode === "login" ? "Sign in" : "Create account"}
       </button>
 
       <p style={styles.hint}>
@@ -237,7 +255,23 @@ const styles: Record<string, React.CSSProperties> = {
   tabs: {
     display: "flex",
     gap: "4px",
-    marginBottom: "8px",
+    marginBottom: "4px",
+  },
+  authModeRow: {
+    display: "flex",
+    justifyContent: "center",
+    marginBottom: "10px",
+    minHeight: "22px",
+  },
+  linkBtn: {
+    background: "none",
+    border: "none",
+    padding: "2px 4px",
+    fontSize: "12px",
+    color: "var(--vscode-textLink-foreground)",
+    cursor: "pointer",
+    fontFamily: "var(--vscode-font-family)",
+    textDecoration: "underline",
   },
   tab: {
     flex: 1,
