@@ -1,10 +1,6 @@
 import React, { useMemo, useState } from "react";
 import type { MeResponse } from "../../../lib/types";
-import {
-  requestPlanClear,
-  requestPlanGenerate,
-  requestPlanStep,
-} from "../vscodeBridge";
+import { requestPlanGenerate, requestPlanStep } from "../vscodeBridge";
 
 const XP_PER_QUEST = 35;
 
@@ -36,22 +32,22 @@ interface RankInfo {
 
 function rankForProgress(done: number, total: number): RankInfo {
   if (total === 0) {
-    return { label: "No run yet", emoji: "○" };
+    return { label: "Still in the nest", emoji: "🪺" };
   }
   const ratio = done / total;
   if (ratio >= 1) {
-    return { label: "First week champion", emoji: "🏆" };
+    return { label: "Soaring high", emoji: "🦅" };
   }
   if (ratio >= 0.66) {
-    return { label: "Closer", emoji: "⚡" };
+    return { label: "Strong wings", emoji: "🪶" };
   }
   if (ratio >= 0.33) {
-    return { label: "Building momentum", emoji: "🔥" };
+    return { label: "Fledgling", emoji: "🐤" };
   }
   if (ratio > 0) {
-    return { label: "Explorer", emoji: "🧭" };
+    return { label: "First flaps", emoji: "🐦" };
   }
-  return { label: "Ready to roll", emoji: "🎯" };
+  return { label: "Fresh hatchling", emoji: "🐣" };
 }
 
 interface Props {
@@ -64,7 +60,6 @@ interface Props {
 export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded }) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
-  const [focusId, setFocusId] = useState<string>("");
 
   const plan = me.onboarding_plan;
   const tasks = me.onboarding_tasks ?? [];
@@ -107,22 +102,22 @@ export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded
     const nRun = progress.total;
     const doneRun = progress.done;
     if (nTeam > 0 && nRun > 0) {
-      return `${nTeam} team · ${doneRun}/${nRun} quests`;
+      return `${nTeam} team · ${doneRun}/${nRun} birdies`;
     }
     if (nTeam > 0) {
-      return `${nTeam} team task${nTeam === 1 ? "" : "s"} · run below`;
+      return `${nTeam} team task${nTeam === 1 ? "" : "s"} · flock below`;
     }
     if (nRun > 0) {
-      return `${doneRun}/${nRun} quests`;
+      return `${doneRun}/${nRun} birdies`;
     }
-    return "Start a run to track your first week";
+    return "Start a run to get your flock going";
   }, [tasks.length, progress.done, progress.total]);
 
   const runGenerate = async () => {
     setError(undefined);
     setBusy(true);
     try {
-      const r = await requestPlanGenerate(focusId || undefined);
+      const r = await requestPlanGenerate(undefined);
       if (r.ok) {
         onMeUpdated(r.me);
       } else {
@@ -148,22 +143,24 @@ export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded
     }
   };
 
-  const clearPlan = async () => {
-    setError(undefined);
-    setBusy(true);
-    try {
-      const r = await requestPlanClear();
-      if (r.ok) {
-        onMeUpdated(r.me);
-      } else {
-        setError(r.error);
-      }
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const wrapStyle = embedded ? { ...styles.wrap, ...styles.wrapEmbedded } : styles.wrap;
+
+  const hasPlanSteps = !!plan?.steps?.length;
+  const showStartFlockButton = !hasPlanSteps;
+  const showPlanControls = showStartFlockButton || !!error;
+  const planControlsStyle = !showPlanControls
+    ? undefined
+    : showStartFlockButton
+      ? steps.length > 0
+        ? embedded
+          ? { ...styles.planControls, ...styles.planControlsEmbedded }
+          : styles.planControls
+        : embedded
+          ? { ...styles.planControlsFirst, ...styles.planControlsEmbedded }
+          : styles.planControlsFirst
+      : embedded
+        ? { ...styles.planControls, ...styles.planControlsEmbedded }
+        : styles.planControls;
 
   return (
     <div style={wrapStyle}>
@@ -198,7 +195,7 @@ export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded
         <>
           <div style={styles.runCard}>
             <div style={styles.runCardTop}>
-              <div style={styles.rankPill} title="Rank updates as you complete quests">
+              <div style={styles.rankPill} title="Rank updates as you land birdies">
                 <span style={styles.rankEmoji} aria-hidden>
                   {rank.emoji}
                 </span>
@@ -214,7 +211,7 @@ export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded
             </div>
             <div style={styles.progressCaption}>
               {progress.done === progress.total ? (
-                <span style={styles.winText}>All quests done.</span>
+                <span style={styles.winText}>Whole flock home.</span>
               ) : (
                 <>
                   <span>
@@ -237,7 +234,7 @@ export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded
 
           {embedded ? (
             <div style={styles.runQuestLabelRow}>
-              <span style={styles.teamSectionLabel}>Run quests</span>
+              <span style={styles.teamSectionLabel}>Your birdies</span>
             </div>
           ) : null}
 
@@ -258,32 +255,38 @@ export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded
                   }}
                 >
                   <div style={styles.questHead}>
-                    <div style={styles.questIndex} aria-hidden>
-                      {i + 1}
-                    </div>
-                    <label style={styles.stepLabel}>
-                      <input
-                        type="checkbox"
-                        checked={s.done}
-                        disabled={busy}
-                        onChange={(e) => toggleStep(s.id, e.target.checked)}
-                        aria-label={s.done ? `Mark incomplete: ${s.title}` : `Mark complete: ${s.title}`}
-                      />
+                    <button
+                      type="button"
+                      style={{
+                        ...styles.questIndexBtn,
+                        ...(s.done ? styles.questIndexBtnDone : {}),
+                      }}
+                      disabled={busy}
+                      onClick={() => void toggleStep(s.id, !s.done)}
+                      aria-pressed={s.done}
+                      aria-label={
+                        s.done
+                          ? `Mark incomplete birdie ${i + 1}: ${(s.title ?? "").trim() || "Birdie"}`
+                          : `Mark complete birdie ${i + 1}: ${(s.title ?? "").trim() || "Birdie"}`
+                      }
+                      title={s.done ? "Click to mark incomplete" : "Click to mark complete"}
+                    >
+                      {s.done ? "✓" : i + 1}
+                    </button>
+                    <div style={styles.stepTitleRow}>
                       <span
                         style={{ ...styles.stepTitle, ...(s.done ? styles.stepTitleDone : {}) }}
                         title={embedded && questTip ? questTip : undefined}
                       >
-                        {(s.title ?? "").trim() || "Quest"}
+                        {(s.title ?? "").trim() || "Birdie"}
                       </span>
-                    </label>
+                    </div>
                     {!s.done ? (
                       <span style={styles.xpChip} aria-hidden>
                         +{XP_PER_QUEST}
                       </span>
                     ) : (
-                      <span style={styles.clearedChip} aria-label="Completed">
-                        ✓
-                      </span>
+                      <span style={styles.xpSlot} aria-hidden />
                     )}
                   </div>
                   {!embedded && detail ? (
@@ -304,54 +307,23 @@ export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded
         </>
       )}
 
-      <div
-        style={
-          steps.length > 0
-            ? embedded
-              ? { ...styles.planControls, ...styles.planControlsEmbedded }
-              : styles.planControls
-            : embedded
-              ? { ...styles.planControlsFirst, ...styles.planControlsEmbedded }
-              : styles.planControlsFirst
-        }
-      >
-        {tasks.length > 0 && (
-          <label style={styles.focusLabel}>
-            Focus task (optional)
-            <select
-              style={styles.select}
-              value={focusId}
-              onChange={(e) => setFocusId(e.target.value)}
-              disabled={busy}
-            >
-              <option value="">Balanced first week</option>
-              {tasks.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.title}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-
-        <div style={styles.actions}>
-          <button
-            type="button"
-            style={{ ...styles.primaryBtn, opacity: busy ? 0.55 : 1 }}
-            disabled={busy}
-            onClick={runGenerate}
-          >
-            {plan?.steps?.length ? "Reroll quests" : "Start my run"}
-          </button>
-          {plan?.steps?.length ? (
-            <button type="button" style={styles.ghostBtn} disabled={busy} onClick={clearPlan}>
-              Reset run
-            </button>
+      {showPlanControls ? (
+        <div style={planControlsStyle}>
+          {showStartFlockButton ? (
+            <div style={styles.actions}>
+              <button
+                type="button"
+                style={{ ...styles.primaryBtn, opacity: busy ? 0.55 : 1 }}
+                disabled={busy}
+                onClick={runGenerate}
+              >
+                Start my flock
+              </button>
+            </div>
           ) : null}
+          {error ? <p style={styles.err}>{error}</p> : null}
         </div>
-
-        {error && <p style={styles.err}>{error}</p>}
-      </div>
+      ) : null}
     </div>
   );
 };
@@ -365,7 +337,7 @@ const styles: Record<string, React.CSSProperties> = {
     overflowY: "auto",
   },
   wrapEmbedded: {
-    padding: "4px 0 0",
+    padding: 0,
     borderBottom: "none",
     maxHeight: "none",
   },
@@ -373,7 +345,7 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: "8px",
   },
   headRowEmbedded: {
-    marginBottom: "4px",
+    marginBottom: "6px",
   },
   teamSection: {
     marginBottom: "8px",
@@ -428,8 +400,8 @@ const styles: Record<string, React.CSSProperties> = {
     whiteSpace: "nowrap",
   },
   runQuestLabelRow: {
-    marginBottom: "5px",
-    marginTop: "-2px",
+    marginBottom: "6px",
+    marginTop: 0,
   },
   titleRow: {
     display: "flex",
@@ -531,35 +503,16 @@ const styles: Record<string, React.CSSProperties> = {
     userSelect: "none",
   },
   planControls: {
-    marginTop: "12px",
-    paddingTop: "12px",
+    marginTop: "10px",
+    paddingTop: "10px",
     borderTop: "1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.08))",
   },
   planControlsFirst: {
-    marginTop: "6px",
+    marginTop: "8px",
   },
   planControlsEmbedded: {
-    marginTop: "8px",
-    paddingTop: "8px",
-  },
-  focusLabel: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "5px",
-    fontSize: "10px",
-    fontWeight: 600,
-    color: "var(--vscode-descriptionForeground)",
-    marginBottom: "10px",
-  },
-  select: {
-    marginTop: "2px",
-    fontSize: "11px",
-    padding: "6px 8px",
-    background: "var(--vscode-dropdown-background)",
-    color: "var(--vscode-dropdown-foreground)",
-    border: "1px solid var(--vscode-dropdown-border, rgba(255,255,255,0.15))",
-    borderRadius: "6px",
-    fontFamily: "var(--vscode-font-family)",
+    marginTop: "10px",
+    paddingTop: "10px",
   },
   actions: {
     display: "flex",
@@ -575,17 +528,6 @@ const styles: Record<string, React.CSSProperties> = {
     border: "none",
     background: "var(--vscode-button-background)",
     color: "var(--vscode-button-foreground)",
-    cursor: "pointer",
-    fontFamily: "var(--vscode-font-family)",
-  },
-  ghostBtn: {
-    padding: "6px 12px",
-    fontSize: "11px",
-    fontWeight: 500,
-    borderRadius: "6px",
-    border: "1px solid var(--vscode-widget-border, rgba(255,255,255,0.12))",
-    background: "transparent",
-    color: "var(--vscode-descriptionForeground)",
     cursor: "pointer",
     fontFamily: "var(--vscode-font-family)",
   },
@@ -644,16 +586,16 @@ const styles: Record<string, React.CSSProperties> = {
   },
   questHead: {
     display: "grid",
-    gridTemplateColumns: "20px 1fr auto",
+    gridTemplateColumns: "22px 1fr auto",
     alignItems: "start",
     gap: "6px",
     marginBottom: "2px",
   },
-  questIndex: {
-    width: "20px",
-    height: "20px",
+  questIndexBtn: {
+    width: "22px",
+    height: "22px",
     borderRadius: "999px",
-    fontSize: "9px",
+    fontSize: "10px",
     fontWeight: 700,
     display: "flex",
     alignItems: "center",
@@ -661,16 +603,24 @@ const styles: Record<string, React.CSSProperties> = {
     background: "var(--vscode-badge-background)",
     color: "var(--vscode-badge-foreground)",
     flexShrink: 0,
+    border: "none",
+    padding: 0,
+    cursor: "pointer",
+    fontFamily: "var(--vscode-font-family)",
+    lineHeight: 1,
   },
-  stepLabel: {
+  questIndexBtnDone: {
+    background: "transparent",
+    boxShadow: "inset 0 0 0 2px var(--vscode-testing-iconPassed, var(--vscode-gitDecoration-addedResourceForeground, #73c991))",
+    color: "var(--vscode-testing-iconPassed, var(--vscode-gitDecoration-addedResourceForeground, #73c991))",
+  },
+  stepTitleRow: {
     display: "flex",
     alignItems: "flex-start",
-    gap: "6px",
+    minWidth: 0,
     fontSize: "11px",
     fontWeight: 600,
     color: "var(--vscode-foreground)",
-    cursor: "pointer",
-    minWidth: 0,
   },
   stepTitle: {
     flex: 1,
@@ -681,13 +631,9 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 500,
     color: "var(--vscode-descriptionForeground)",
   },
-  clearedChip: {
-    fontSize: "11px",
-    fontWeight: 700,
-    color: "var(--vscode-testing-iconPassed, var(--vscode-gitDecoration-addedResourceForeground, #73c991))",
-    paddingTop: "1px",
+  xpSlot: {
+    minWidth: "28px",
     flexShrink: 0,
-    lineHeight: 1,
   },
   xpChip: {
     fontSize: "9px",

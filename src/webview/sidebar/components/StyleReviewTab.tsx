@@ -91,8 +91,8 @@ const styles: Record<string, React.CSSProperties> = {
     minHeight: 0,
     display: "flex",
     flexDirection: "column",
-    padding: "12px",
-    gap: "12px",
+    padding: "8px 12px 12px",
+    gap: "10px",
     overflow: "hidden",
   },
   lead: {
@@ -117,7 +117,7 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     minHeight: 0,
     overflowY: "auto",
-    padding: "10px 10px 12px",
+    padding: "8px 12px 12px",
     borderRadius: "6px",
     border: "1px solid var(--vscode-widget-border, rgba(255,255,255,0.1))",
     background: "var(--vscode-editor-background)",
@@ -164,7 +164,7 @@ const styles: Record<string, React.CSSProperties> = {
   issueItem: {
     border: "1px solid var(--vscode-widget-border, rgba(255,255,255,0.1))",
     borderRadius: "8px",
-    padding: "8px 10px",
+    padding: "8px 12px",
     background: "var(--vscode-sideBar-background)",
   },
   issueHeader: {

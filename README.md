@@ -8,9 +8,11 @@ A multi-agent onboarding extension that autonomously guides new hires into becom
 |--------|------|
 | API & agents | FastAPI, LangGraph, LangChain (OpenAI-compatible client for **K2 Think V2**) |
 | Data | MongoDB Atlas + vector search (`langchain-mongodb`, Motor/PyMongo) |
-| Auth | FastAPI: **bcrypt** passwords + **JWT** (HS256); users & employers in **MongoDB**; extension stores token in VS Code Secret Storage |
+| Auth | **Auth0** for authentication; **FastAPI** with **JWT**-protected routes; users & employers in **MongoDB**; extension stores access tokens in VS Code Secret Storage |
 | AI gateway / billing | **Lava** — FastAPI calls Lava REST with `httpx` and your secret key |
 | Client | **VS Code extension** at repo root (Webviews / UI for onboarding) |
+
+We use **[Auth0](https://auth0.com/)** for authentication. Configure your Auth0 tenant and application in the [Auth0 Dashboard](https://auth0.com/docs); the VS Code extension keeps access tokens in Secret Storage and sends them to the API.
 
 Copy env templates and fill in when you have keys:
 

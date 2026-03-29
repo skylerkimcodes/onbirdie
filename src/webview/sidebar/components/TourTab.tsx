@@ -179,8 +179,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     overflow: "hidden",
-    padding: "12px",
-    paddingBottom: "8px",
+    padding: "8px 12px 12px",
   },
   tourBody: {
     flex: 1,
@@ -189,7 +188,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: "10px",
-    paddingBottom: "4px",
+    paddingBottom: "6px",
   },
   emptyState: {
     display: "flex",
@@ -234,8 +233,8 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "space-between",
     flexShrink: 0,
-    paddingTop: "10px",
-    marginTop: "4px",
+    paddingTop: "8px",
+    marginTop: "6px",
     borderTop: "1px solid var(--vscode-widget-border, rgba(255,255,255,0.12))",
   },
   navBtn: {

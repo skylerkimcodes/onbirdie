@@ -38,7 +38,7 @@ function buildWelcome(me: MeResponse, profile: Profile): string {
   if (me.user.has_resume && !skillsBlock) {
     skillsBlock = `\n\nWe saved your resume text so I can reference your background when it helps.`;
   }
-  return `Hey ${name}! I'm OnBirdie, your onboarding agent. I know you're a **${role}** — I'll tailor guidance to that.${skillsBlock}\n\nHere's what I can help you with:\n• **Chat** (below) — ask about the repo or your tasks\n• **Guide** — suggested files, employer tasks, and your onboarding run\n• **Tour** — walk the codebase for your role\n• **Style** — review staged changes against your style guide\n\nWhat would you like to start with?`;
+  return `Hey ${name}! I'm OnBirdie, your onboarding agent. I know you're a **${role}** — I'll tailor guidance to that.${skillsBlock}\n\nHere's what I can help you with:\n• **Chat** (below) — ask about the repo or your tasks\n• **Guide** — suggested files, team tasks, and your flock of **birdies** (onboarding milestones)\n• **Tour** — walk the codebase for your role\n• **Style** — review staged changes against your style guide\n\nWhat would you like to start with?`;
 }
 
 export const ChatView: React.FC<ChatViewProps> = ({ me, profile, onMeUpdated, onSignOut }) => {
@@ -78,11 +78,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ me, profile, onMeUpdated, on
       }
       if (res.ok) {
         setHints(res.files);
-        if (res.files.length === 0) {
-          setHintsNote("Open a workspace folder to see file suggestions here.");
-        } else {
-          setHintsNote(undefined);
-        }
+        setHintsNote(undefined);
       } else {
         setHints([]);
         setHintsNote(res.error);
@@ -290,7 +286,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     gap: "10px",
-    padding: "10px 12px 10px 14px",
+    padding: "10px 12px",
     borderBottom: "1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.08))",
     flexShrink: 0,
     background: "var(--vscode-sideBar-background)",
@@ -312,7 +308,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     alignItems: "flex-end",
-    gap: "6px",
+    gap: "5px",
     flexShrink: 0,
     maxWidth: "42%",
     minWidth: 0,
@@ -355,10 +351,10 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     minHeight: 0,
     overflowY: "auto",
-    padding: "6px 10px",
+    padding: "8px 12px",
     display: "flex",
     flexDirection: "column",
-    gap: "6px",
+    gap: "8px",
   },
   agentRow: { display: "flex", justifyContent: "flex-start" },
   userRow: { display: "flex", justifyContent: "flex-end" },
@@ -389,8 +385,8 @@ const styles: Record<string, React.CSSProperties> = {
   },
   inputRow: {
     display: "flex",
-    gap: "5px",
-    padding: "6px 10px",
+    gap: "6px",
+    padding: "8px 12px",
     borderTop: "1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.1))",
     flexShrink: 0,
     alignItems: "flex-end",

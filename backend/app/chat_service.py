@@ -178,7 +178,7 @@ def build_system_prompt(
     if isinstance(plan_raw, dict):
         psteps = plan_raw.get("steps")
         if isinstance(psteps, list) and psteps:
-            lines.append("Employee onboarding run — quest progress (reference when coaching):")
+            lines.append("Employee onboarding run — birdie progress (reference when coaching):")
             for ps in psteps:
                 if not isinstance(ps, dict):
                     continue
@@ -189,11 +189,11 @@ def build_system_prompt(
                 lines.append(f"- [{mark}] {pid}: {ptitle}")
         else:
             lines.append(
-                "No saved onboarding run yet — offer to help them start a quest line (actionable steps)."
+                "No saved onboarding run yet — offer to help them hatch a flock of birdies (actionable steps)."
             )
     else:
         lines.append(
-            "No saved onboarding run yet — offer to help them start a quest line (actionable steps)."
+            "No saved onboarding run yet — offer to help them hatch a flock of birdies (actionable steps)."
         )
 
     return "\n".join(lines)

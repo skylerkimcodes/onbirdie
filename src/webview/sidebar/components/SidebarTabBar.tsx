@@ -50,7 +50,7 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: "row",
     flexShrink: 0,
     borderBottom: "1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.08))",
-    padding: "6px 10px 8px",
+    padding: "8px 10px",
     gap: "6px",
     background: "var(--vscode-sideBar-background)",
   },

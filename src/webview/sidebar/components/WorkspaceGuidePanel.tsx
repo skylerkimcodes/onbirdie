@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import type {
   MeResponse,
   StyleGuideEffectiveSource,
@@ -36,9 +36,6 @@ export const WorkspaceGuidePanel: React.FC<Props> = ({
   hintsNote,
   onMeUpdated,
 }) => {
-  const tasks = me.onboarding_tasks ?? [];
-  const plan = me.onboarding_plan;
-
   const [styleGuide, setStyleGuide] = useState<StyleGuideGetResponse | null>(null);
   const [styleGuideLoading, setStyleGuideLoading] = useState(true);
   const [styleGuideError, setStyleGuideError] = useState<string | undefined>();
@@ -70,31 +67,8 @@ export const WorkspaceGuidePanel: React.FC<Props> = ({
     };
   }, [me.user.id]);
 
-  const subtitle = useMemo(() => {
-    const parts: string[] = [];
-    if (hints && hints.length > 0) {
-      parts.push(`${hints.length} file${hints.length === 1 ? "" : "s"}`);
-    } else if (hintsNote) {
-      parts.push("workspace");
-    }
-    if (tasks.length > 0) {
-      parts.push(`${tasks.length} task${tasks.length === 1 ? "" : "s"}`);
-    }
-    if (plan?.steps?.length) {
-      const done = plan.steps.filter((s) => s.done).length;
-      parts.push(`quests ${done}/${plan.steps.length}`);
-    } else {
-      parts.push("no run yet");
-    }
-    return parts.join(" · ");
-  }, [hints, hintsNote, tasks.length, plan]);
-
   return (
     <div style={styles.root}>
-      <div style={styles.panelHeader}>
-        <div style={styles.panelTitle}>Guide</div>
-        <div style={styles.panelSubtitle}>{subtitle}</div>
-      </div>
       <div style={styles.scroll}>
         {hints && hints.length > 0 && (
           <section style={styles.section}>
@@ -136,34 +110,17 @@ const styles: Record<string, React.CSSProperties> = {
     minHeight: 0,
     overflow: "hidden",
   },
-  panelHeader: {
-    flexShrink: 0,
-    padding: "12px 12px 10px",
-    borderBottom: "1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.08))",
-  },
-  panelTitle: {
-    fontSize: "12px",
-    fontWeight: 700,
-    letterSpacing: "-0.01em",
-    color: "var(--vscode-foreground)",
-  },
-  panelSubtitle: {
-    fontSize: "10px",
-    color: "var(--vscode-descriptionForeground)",
-    lineHeight: 1.4,
-    marginTop: "5px",
-  },
   scroll: {
     flex: 1,
     minHeight: 0,
     overflowY: "auto",
-    padding: "10px 12px 14px",
+    padding: "8px 12px 12px",
     display: "flex",
     flexDirection: "column",
     gap: "0",
   },
   section: {
-    marginBottom: "14px",
+    marginBottom: "12px",
   },
   sectionLast: {
     marginBottom: "0",
