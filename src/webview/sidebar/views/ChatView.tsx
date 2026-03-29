@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import type { MeResponse, StyleReviewOutcome, WorkspaceHintFile } from "../../../lib/types";
+import type { ChatCodeRef, MeResponse, StyleReviewOutcome, WorkspaceHintFile } from "../../../lib/types";
 import { Profile } from "./ProfileView";
 import {
   requestStyleReview,
   requestWorkspaceHints,
+  openCodeRef,
   sendChatMessages,
   subscribeToExtension,
   type ExtensionToWebviewMessage,
@@ -18,6 +19,7 @@ interface Message {
   id: number;
   role: "agent" | "user";
   text: string;
+  codeRefs?: ChatCodeRef[];
 }
 
 interface ChatViewProps {
@@ -153,12 +155,17 @@ export const ChatView: React.FC<ChatViewProps> = ({ me, profile, onMeUpdated, on
     }));
 
     void (async () => {
-      const result = await sendChatMessages(apiMessages);
+      const result = await sendChatMessages(apiMessages, me.employer.highlight_paths);
       setIsTyping(false);
       if (result.ok) {
         setMessages((prev) => [
           ...prev,
-          { id: Date.now() + 1, role: "agent", text: result.message },
+          {
+            id: Date.now() + 1,
+            role: "agent",
+            text: result.message,
+            codeRefs: result.code_refs.length ? result.code_refs : undefined,
+          },
         ]);
       } else {
         setMessages((prev) => [
@@ -322,9 +329,27 @@ export const ChatView: React.FC<ChatViewProps> = ({ me, profile, onMeUpdated, on
           <div style={styles.messages}>
             {messages.map((msg) => (
               <div key={msg.id} style={msg.role === "user" ? styles.userRow : styles.agentRow}>
-                <div style={msg.role === "user" ? styles.userBubble : styles.agentBubble}>
-                  {formatText(msg.text)}
-                </div>
+                {msg.role === "user" ? (
+                  <div style={styles.userBubble}>{formatText(msg.text)}</div>
+                ) : (
+                  <div style={styles.agentBlock}>
+                    <div style={styles.agentBubble}>{formatText(msg.text)}</div>
+                    {msg.codeRefs?.length ? (
+                      <div style={styles.codeRefList}>
+                        {msg.codeRefs.map((r, i) => (
+                          <button
+                            key={`${r.path}-${r.start_line}-${i}`}
+                            type="button"
+                            style={styles.codeRefBtn}
+                            onClick={() => openCodeRef(r)}
+                          >
+                            Open {r.path} — L{r.start_line}–{r.end_line}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
               </div>
             ))}
             {isTyping && (
@@ -504,6 +529,13 @@ const styles: Record<string, React.CSSProperties> = {
   },
   agentRow: { display: "flex", justifyContent: "flex-start" },
   userRow: { display: "flex", justifyContent: "flex-end" },
+  agentBlock: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: "6px",
+    maxWidth: "85%",
+  },
   agentBubble: {
     background: "var(--vscode-editorWidget-background)",
     color: "var(--vscode-foreground)",
@@ -511,10 +543,31 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "8px 12px",
     fontSize: "12px",
     lineHeight: "1.5",
-    maxWidth: "85%",
+    maxWidth: "100%",
     border: "1px solid var(--vscode-widget-border, rgba(255,255,255,0.1))",
     animation: `ob-msg-in 0.34s ${OB_EASE}`,
     transition: `border-color 0.22s ${OB_EASE}, box-shadow 0.22s ${OB_EASE}`,
+  },
+  codeRefList: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: "4px",
+    width: "100%",
+  },
+  codeRefBtn: {
+    fontSize: "10px",
+    fontWeight: 600,
+    textAlign: "left",
+    padding: "5px 8px",
+    borderRadius: "6px",
+    border: "1px solid var(--vscode-widget-border, rgba(255,255,255,0.12))",
+    background: "var(--vscode-editorWidget-background)",
+    color: "var(--vscode-textLink-foreground)",
+    cursor: "pointer",
+    fontFamily: "var(--vscode-font-family)",
+    lineHeight: 1.35,
+    transition: `opacity 0.2s ${OB_EASE}, border-color 0.2s ${OB_EASE}`,
   },
   userBubble: {
     background: "var(--vscode-button-background)",

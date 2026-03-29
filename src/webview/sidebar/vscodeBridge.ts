@@ -1,5 +1,6 @@
 import type {
   ChatApiMessage,
+  ChatCodeRef,
   ChatSendResult,
   EmployerAdminApiResult,
   EmployerAdminWorkspace,
@@ -235,10 +236,28 @@ export function requestWorkspaceHints(highlightPaths: string[]): Promise<Workspa
   });
 }
 
-export function sendChatMessages(messages: ChatApiMessage[]): Promise<ChatSendResult> {
+export function sendChatMessages(
+  messages: ChatApiMessage[],
+  highlightPaths?: string[]
+): Promise<ChatSendResult> {
   return new Promise((resolve) => {
     chatResolve = resolve;
-    vscode.postMessage({ type: "chat/send", payload: { messages } });
+    vscode.postMessage({
+      type: "chat/send",
+      payload: { messages, highlight_paths: highlightPaths ?? [] },
+    });
+  });
+}
+
+/** Jump to a workspace file and highlight a line range (from chat CODE_REFS_JSON). */
+export function openCodeRef(ref: ChatCodeRef): void {
+  vscode.postMessage({
+    type: "openCodeRef",
+    payload: {
+      path: ref.path,
+      start_line: ref.start_line,
+      end_line: ref.end_line,
+    },
   });
 }
 

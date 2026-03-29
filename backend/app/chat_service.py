@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from typing import Any
+
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
@@ -15,6 +18,48 @@ import re as _re
 
 _THINK_PAIRED_RE = _re.compile(r"<think>[\s\S]*?</think>\s*", _re.IGNORECASE)
 _THINK_CLOSE_ONLY_RE = _re.compile(r"^[\s\S]*?</think>\s*", _re.IGNORECASE)
+
+
+_CODE_REFS_KEY = "CODE_REFS_JSON:"
+
+
+def parse_code_refs_footer(text: str) -> tuple[str, list[dict[str, Any]]]:
+    """Strip trailing ``CODE_REFS_JSON: [...]`` from the model reply and parse refs."""
+    t = text.rstrip()
+    idx = t.rfind(_CODE_REFS_KEY)
+    if idx == -1:
+        return t, []
+    before = t[:idx].rstrip()
+    json_part = t[idx + len(_CODE_REFS_KEY) :].strip()
+    if not json_part:
+        return before, []
+    try:
+        data = json.loads(json_part)
+    except json.JSONDecodeError:
+        return t, []
+    if not isinstance(data, list):
+        return t, []
+    refs: list[dict[str, Any]] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        path = str(item.get("path") or "").strip()
+        if not path:
+            continue
+        sl = item.get("start_line", item.get("start"))
+        el = item.get("end_line", item.get("end"))
+        try:
+            start_line = int(sl) if sl is not None else 1
+        except (TypeError, ValueError):
+            start_line = 1
+        try:
+            end_line = int(el) if el is not None else start_line
+        except (TypeError, ValueError):
+            end_line = start_line
+        start_line = max(1, start_line)
+        end_line = max(start_line, end_line)
+        refs.append({"path": path, "start_line": start_line, "end_line": end_line})
+    return before, refs
 
 
 def strip_thinking_tags(text: str) -> str:
@@ -123,11 +168,13 @@ def build_system_prompt(
     employer: dict,
     *,
     onboarding_tasks: list[dict] | None = None,
+    workspace_files: list[dict] | None = None,
 ) -> str:
     lines = [
         "You are OnBirdie, a concise onboarding assistant for software engineers working inside VS Code.",
         "Use short Markdown when it helps: bullets, **bold** for emphasis, no walls of text.",
         "You explain the codebase onboarding process, break down first tasks, and answer questions.",
+        "When your answer points to a specific place in this repo, the user can jump there from the chat — see CODE_REFS_JSON below.",
         "When the user asks about their resume, LinkedIn, skills, or background, use the employee context below.",
         "If you lack information, say so and suggest what they could add to their profile.",
         "Refer to the employer's onboarding tasks when helping them plan work or prioritize.",
@@ -222,7 +269,34 @@ def build_system_prompt(
             "No saved onboarding run yet — offer to help them hatch a flock of birdies (actionable steps)."
         )
 
-    return "\n".join(lines)
+    base = "\n".join(lines)
+
+    wf = workspace_files or []
+    if wf:
+        base += (
+            "\n\n---\nWorkspace file excerpts (paths are workspace-relative; cite only these paths "
+            "in CODE_REFS_JSON when recommending a location):\n"
+        )
+        for wf_item in wf[:20]:
+            p = str(wf_item.get("path") or "").strip()
+            ex = str(wf_item.get("excerpt") or "").strip()
+            if not p:
+                continue
+            cap = 6000
+            if len(ex) > cap:
+                ex = ex[:cap] + "\n… [truncated]"
+            base += f"\n### {p}\n{ex}\n"
+
+    base += (
+        "\n\n---\nAfter your main Markdown answer, add exactly one final line (no code fence):\n"
+        "CODE_REFS_JSON: []\n"
+        "If the user should open specific lines in the editor, replace [] with a JSON array, e.g. "
+        '[{"path":"src/example.ts","start_line":10,"end_line":25}]. '
+        "Use 1-based line numbers. Paths must be workspace-relative and should match the excerpts above when possible. "
+        "If nothing to highlight, use CODE_REFS_JSON: []."
+    )
+
+    return base
 
 
 async def invoke_system_user(

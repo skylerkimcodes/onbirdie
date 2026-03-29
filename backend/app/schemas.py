@@ -114,12 +114,29 @@ class ChatTurn(BaseModel):
     content: str = Field(min_length=1, max_length=24_000)
 
 
+class WorkspaceContextFile(BaseModel):
+    """Workspace-relative path plus excerpt sent from the VS Code extension."""
+
+    path: str = Field(min_length=1, max_length=2000)
+    excerpt: str = Field(default="", max_length=12_000)
+
+
 class ChatRequest(BaseModel):
     messages: list[ChatTurn] = Field(min_length=1, max_length=60)
+    workspace_files: list[WorkspaceContextFile] = Field(default_factory=list, max_length=24)
+
+
+class CodeRef(BaseModel):
+    """A file range the assistant wants the user to open in the editor."""
+
+    path: str = Field(min_length=1, max_length=2000)
+    start_line: int = Field(default=1, ge=1)
+    end_line: int = Field(default=1, ge=1)
 
 
 class ChatResponse(BaseModel):
     message: str
+    code_refs: list[CodeRef] = Field(default_factory=list)
 
 
 class StyleReviewRequest(BaseModel):

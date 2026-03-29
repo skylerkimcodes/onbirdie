@@ -154,6 +154,29 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
               vscode.Uri.file(message.payload as string)
             );
             break;
+          case "openCodeRef": {
+            const p = message.payload as {
+              path?: string;
+              start_line?: number;
+              end_line?: number;
+            };
+            if (!p?.path) {
+              break;
+            }
+            const folders = vscode.workspace.workspaceFolders;
+            if (!folders?.length) {
+              break;
+            }
+            const segments = p.path.replace(/\\/g, "/").split("/").filter(Boolean);
+            if (segments.length === 0) {
+              break;
+            }
+            const uri = vscode.Uri.joinPath(folders[0].uri, ...segments);
+            const start = typeof p.start_line === "number" ? p.start_line : 1;
+            const end = typeof p.end_line === "number" ? p.end_line : start;
+            void this._openAndHighlightRange(uri.fsPath, start, end);
+            break;
+          }
           case "profile/save": {
             const body = message.payload as OnboardingProfilePayload;
             const result = await saveOnboardingProfile(secrets, body);
@@ -214,9 +237,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             break;
           }
           case "chat/send": {
-            const p = message.payload as { messages?: ChatApiMessage[] };
+            const p = message.payload as {
+              messages?: ChatApiMessage[];
+              highlight_paths?: string[];
+            };
             const msgs = p?.messages ?? [];
-            const result = await sendChat(secrets, msgs);
+            const workspaceFiles = await collectWorkspaceContextForChat(
+              p?.highlight_paths ?? [],
+              12,
+              4000
+            );
+            const result = await sendChat(secrets, msgs, workspaceFiles);
             wv.postMessage({ type: "chat/result", payload: result });
             break;
           }
@@ -293,32 +324,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           }
           case "tour/goto": {
             const p = message.payload as { absolutePath?: string; startLine?: number; endLine?: number } | undefined;
-            if (!p?.absolutePath) break;
-            if (!this._tourDecoration) {
-              this._tourDecoration = vscode.window.createTextEditorDecorationType({
-                isWholeLine: true,
-                backgroundColor: new vscode.ThemeColor("editor.findMatchHighlightBackground"),
-                borderWidth: "0 0 0 3px",
-                borderStyle: "solid",
-                borderColor: new vscode.ThemeColor("editorInfo.foreground"),
-              });
+            if (!p?.absolutePath) {
+              break;
             }
-            try {
-              const uri = vscode.Uri.file(p.absolutePath);
-              const doc = await vscode.workspace.openTextDocument(uri);
-              const editor = await vscode.window.showTextDocument(doc, {
-                viewColumn: vscode.ViewColumn.One,
-                preserveFocus: true,
-              });
-              const startLine = Math.max(0, (p.startLine ?? 1) - 1);
-              const endLine = Math.max(startLine, (p.endLine ?? startLine + 1) - 1);
-              const range = new vscode.Range(startLine, 0, endLine, Number.MAX_SAFE_INTEGER);
-              editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
-              for (const e of vscode.window.visibleTextEditors) {
-                e.setDecorations(this._tourDecoration, []);
-              }
-              editor.setDecorations(this._tourDecoration, [{ range }]);
-            } catch { /* ignore navigation errors */ }
+            void this._openAndHighlightRange(
+              p.absolutePath,
+              p.startLine ?? 1,
+              p.endLine ?? p.startLine ?? 1
+            );
             break;
           }
           case "workspace/getHints": {
@@ -437,6 +450,41 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       };
     }
     return runStyleReviewForDiff(this._context.secrets, diff);
+  }
+
+  /** Open a file and highlight a 1-based line range (same decoration as Tour). */
+  private async _openAndHighlightRange(
+    absolutePath: string,
+    startLine1Based: number,
+    endLine1Based: number
+  ): Promise<void> {
+    if (!this._tourDecoration) {
+      this._tourDecoration = vscode.window.createTextEditorDecorationType({
+        isWholeLine: true,
+        backgroundColor: new vscode.ThemeColor("editor.findMatchHighlightBackground"),
+        borderWidth: "0 0 0 3px",
+        borderStyle: "solid",
+        borderColor: new vscode.ThemeColor("editorInfo.foreground"),
+      });
+    }
+    try {
+      const uri = vscode.Uri.file(absolutePath);
+      const doc = await vscode.workspace.openTextDocument(uri);
+      const editor = await vscode.window.showTextDocument(doc, {
+        viewColumn: vscode.ViewColumn.One,
+        preserveFocus: true,
+      });
+      const startLine = Math.max(0, startLine1Based - 1);
+      const endLine = Math.max(startLine, endLine1Based - 1);
+      const range = new vscode.Range(startLine, 0, endLine, Number.MAX_SAFE_INTEGER);
+      editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+      for (const e of vscode.window.visibleTextEditors) {
+        e.setDecorations(this._tourDecoration, []);
+      }
+      editor.setDecorations(this._tourDecoration, [{ range }]);
+    } catch {
+      /* ignore navigation errors */
+    }
   }
 
   /** Synthetic `git diff`-style patch from bundled `sample-project` (no workspace / git required). */
@@ -567,6 +615,62 @@ function highlightPathToGlob(hp: string): string {
     return `${base}/**/*`;
   }
   return t;
+}
+
+/** File excerpts for chat context: employer highlight globs plus the active editor when in workspace. */
+async function collectWorkspaceContextForChat(
+  highlightPaths: string[],
+  maxFiles: number,
+  maxCharsPerFile: number
+): Promise<{ path: string; excerpt: string }[]> {
+  const folders = vscode.workspace.workspaceFolders;
+  if (!folders?.length || maxFiles <= 0) {
+    return [];
+  }
+  const out: { path: string; excerpt: string }[] = [];
+  const seen = new Set<string>();
+
+  const ed = vscode.window.activeTextEditor;
+  if (ed && !ed.document.isUntitled && ed.document.uri.scheme === "file") {
+    const rel = vscode.workspace.asRelativePath(ed.document.uri, false);
+    if (rel && !rel.startsWith("..")) {
+      try {
+        const text = ed.document.getText();
+        const excerpt =
+          text.length > maxCharsPerFile
+            ? `${text.slice(0, maxCharsPerFile)}\n… [truncated]`
+            : text;
+        out.push({ path: rel, excerpt });
+        seen.add(rel);
+      } catch {
+        /* skip */
+      }
+    }
+  }
+
+  const hints = await collectWorkspaceHints(highlightPaths, Math.max(0, maxFiles - out.length));
+  for (const h of hints) {
+    if (out.length >= maxFiles) {
+      break;
+    }
+    if (seen.has(h.label)) {
+      continue;
+    }
+    try {
+      const buf = await vscode.workspace.fs.readFile(vscode.Uri.file(h.path));
+      const text = Buffer.from(buf).toString("utf8");
+      const excerpt =
+        text.length > maxCharsPerFile
+          ? `${text.slice(0, maxCharsPerFile)}\n… [truncated]`
+          : text;
+      out.push({ path: h.label, excerpt });
+      seen.add(h.label);
+    } catch {
+      /* skip */
+    }
+  }
+
+  return out;
 }
 
 async function collectWorkspaceHints(

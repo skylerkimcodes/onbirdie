@@ -127,8 +127,15 @@ export interface ChatApiMessage {
   content: string;
 }
 
+/** File range returned with chat so the extension can open and highlight code. */
+export interface ChatCodeRef {
+  path: string;
+  start_line: number;
+  end_line: number;
+}
+
 export type ChatSendResult =
-  | { ok: true; message: string }
+  | { ok: true; message: string; code_refs: ChatCodeRef[] }
   | { ok: false; error: string };
 
 export interface TourStep {

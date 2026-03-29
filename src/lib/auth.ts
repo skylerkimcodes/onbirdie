@@ -3,6 +3,7 @@ import { apiRequest, apiUploadFile } from "./api";
 import { getApiBaseUrl } from "./config";
 import type {
   ChatApiMessage,
+  ChatCodeRef,
   ChatSendResult,
   EmployerAdminWorkspace,
   EmployerAdminApiResult,
@@ -359,13 +360,20 @@ export async function saveOnboardingProfile(
 
 export async function sendChat(
   secrets: vscode.SecretStorage,
-  messages: ChatApiMessage[]
+  messages: ChatApiMessage[],
+  workspaceFiles?: { path: string; excerpt: string }[]
 ): Promise<ChatSendResult> {
   const token = await getAccessToken(secrets);
   if (!token) {
     return { ok: false, error: "Not signed in." };
   }
-  const res = await apiRequest("POST", "/api/v1/chat", { token, body: { messages } });
+  const res = await apiRequest("POST", "/api/v1/chat", {
+    token,
+    body: {
+      messages,
+      workspace_files: workspaceFiles ?? [],
+    },
+  });
   if (res.status === 401) {
     await setAccessToken(secrets, undefined);
     return { ok: false, error: "Session expired. Sign in again." };
@@ -373,8 +381,15 @@ export async function sendChat(
   if (!res.ok) {
     return { ok: false, error: await parseErrorDetail(res) };
   }
-  const data = (await res.json()) as { message: string };
-  return { ok: true, message: data.message };
+  const data = (await res.json()) as {
+    message: string;
+    code_refs?: ChatCodeRef[];
+  };
+  return {
+    ok: true,
+    message: data.message,
+    code_refs: data.code_refs ?? [],
+  };
 }
 
 export async function generateOnboardingPlan(
