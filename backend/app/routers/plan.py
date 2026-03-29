@@ -38,7 +38,7 @@ async def generate_plan(
 
     focus = (body.focus_task_id or "").strip() or None
     try:
-        steps = await generate_onboarding_plan_steps(
+        steps, auto_focus = await generate_onboarding_plan_steps(
             user, employer, focus_task_id=focus
         )
     except ValueError as e:
@@ -53,8 +53,9 @@ async def generate_plan(
         ) from e
 
     now = datetime.now(timezone.utc).isoformat()
+    stored_focus = focus or auto_focus
     plan_doc = {
-        "focus_task_id": focus,
+        "focus_task_id": stored_focus,
         "steps": steps,
         "updated_at": now,
     }

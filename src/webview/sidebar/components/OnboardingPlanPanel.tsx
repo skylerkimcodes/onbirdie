@@ -244,20 +244,15 @@ export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded
 
   const hasPlanSteps = !!plan?.steps?.length;
   const showStartFlockButton = !hasPlanSteps;
-  const showPlanControls = showStartFlockButton || !!error;
-  const planControlsStyle = !showPlanControls
-    ? undefined
-    : showStartFlockButton
-      ? steps.length > 0
-        ? embedded
-          ? { ...styles.planControls, ...styles.planControlsEmbedded }
-          : styles.planControls
-        : embedded
-          ? { ...styles.planControlsFirst, ...styles.planControlsEmbedded }
-          : styles.planControlsFirst
-      : embedded
-        ? { ...styles.planControls, ...styles.planControlsEmbedded }
-        : styles.planControls;
+  /** Keep actions visible after the first generation so users can regenerate the guide */
+  const planControlsStyle = embedded
+    ? {
+        ...(hasPlanSteps ? styles.planControls : styles.planControlsFirst),
+        ...styles.planControlsEmbedded,
+      }
+    : hasPlanSteps
+      ? styles.planControls
+      : styles.planControlsFirst;
 
   return (
     <div style={wrapStyle}>
@@ -462,23 +457,30 @@ export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded
         </>
       )}
 
-      {showPlanControls ? (
-        <div style={planControlsStyle}>
+      <div style={planControlsStyle}>
+        <div style={styles.actions}>
           {showStartFlockButton ? (
-            <div style={styles.actions}>
-              <button
-                type="button"
-                style={{ ...styles.primaryBtn, opacity: busy ? 0.55 : 1 }}
-                disabled={busy}
-                onClick={runGenerate}
-              >
-                Start my flock
-              </button>
-            </div>
-          ) : null}
-          {error ? <p style={styles.err}>{error}</p> : null}
+            <button
+              type="button"
+              style={{ ...styles.primaryBtn, opacity: busy ? 0.55 : 1 }}
+              disabled={busy}
+              onClick={runGenerate}
+            >
+              Start my flock
+            </button>
+          ) : (
+            <button
+              type="button"
+              style={{ ...styles.secondaryBtn, opacity: busy ? 0.55 : 1 }}
+              disabled={busy}
+              onClick={runGenerate}
+            >
+              Regenerate guide
+            </button>
+          )}
         </div>
-      ) : null}
+        {error ? <p style={styles.err}>{error}</p> : null}
+      </div>
     </div>
   );
 };
@@ -644,6 +646,18 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     fontFamily: "var(--vscode-font-family)",
     transition: `opacity 0.22s ${OB_EASE}, transform 0.18s ${OB_EASE}`,
+  },
+  secondaryBtn: {
+    padding: "6px 14px",
+    fontSize: "11px",
+    fontWeight: 600,
+    borderRadius: "6px",
+    border: "1px solid var(--vscode-button-secondaryBackground, rgba(255,255,255,0.2))",
+    background: "transparent",
+    color: "var(--vscode-foreground)",
+    cursor: "pointer",
+    fontFamily: "var(--vscode-font-family)",
+    transition: `opacity 0.22s ${OB_EASE}, border-color 0.2s ${OB_EASE}`,
   },
   err: {
     fontSize: "11px",

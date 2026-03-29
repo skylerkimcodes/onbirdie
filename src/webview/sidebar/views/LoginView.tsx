@@ -188,6 +188,32 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn }) => {
         {busy ? "Please wait…" : authMode === "login" ? "Sign in" : "Create account"}
       </button>
 
+      <div style={styles.authModeRow}>
+        {authMode === "login" ? (
+          <button
+            type="button"
+            style={styles.linkBtn}
+            onClick={() => {
+              setAuthMode("register");
+              setError(undefined);
+            }}
+          >
+            Create account
+          </button>
+        ) : (
+          <button
+            type="button"
+            style={styles.linkBtn}
+            onClick={() => {
+              setAuthMode("login");
+              setError(undefined);
+            }}
+          >
+            Back to sign in
+          </button>
+        )}
+      </div>
+
       <p style={styles.hint}>
         Default dev join code: <strong>onbirdie</strong>. Your employer may share a different code.
       </p>

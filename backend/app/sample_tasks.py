@@ -90,6 +90,42 @@ def _normalize_task(raw: dict[str, Any], fallback_index: int) -> dict[str, Any] 
     return {"id": tid, "title": title, "description": desc, "sort_order": order}
 
 
+def tasks_from_employer_config(employer: dict, user: dict) -> bool:
+    """True when tasks come from cohort or ``role_tasks``, not built-in samples."""
+    cj = (user.get("cohort_join_code") or "").strip()
+    if cj:
+        for c in employer.get("cohorts") or []:
+            if not isinstance(c, dict):
+                continue
+            if (c.get("join_code") or "").strip() != cj:
+                continue
+            tasks = c.get("tasks")
+            return isinstance(tasks, list) and len(tasks) > 0
+    role = (user.get("employee_role") or "").strip()
+    if not role:
+        return False
+    custom = employer.get("role_tasks")
+    if isinstance(custom, dict) and role in custom:
+        raw_list = custom.get(role)
+        return isinstance(raw_list, list) and len(raw_list) > 0
+    return False
+
+
+def primary_onboarding_task(
+    tasks: list[dict[str, Any]], focus_task_id: str | None
+) -> dict[str, Any] | None:
+    """Pick the task the plan should center on: explicit id, else lowest ``sort_order``."""
+    if not tasks:
+        return None
+    if focus_task_id and focus_task_id.strip():
+        fid = focus_task_id.strip()
+        for t in tasks:
+            if (t.get("id") or "").strip() == fid:
+                return t
+    ordered = sorted(tasks, key=lambda x: int(x.get("sort_order", 0)))
+    return ordered[0] if ordered else None
+
+
 def resolve_onboarding_tasks(employer: dict, user: dict) -> list[dict[str, Any]]:
     """Prefer cohort-specific task lists when the user registered with a cohort code."""
     role = (user.get("employee_role") or "").strip()

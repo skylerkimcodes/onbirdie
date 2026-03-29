@@ -263,6 +263,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ me, profile, onMeUpdated, on
         <div
           style={{
             ...styles.tabPanel,
+            ...styles.tabPanelTour,
             display: activeTab === "tour" ? "flex" : "none",
           }}
           hidden={activeTab !== "tour"}
@@ -286,7 +287,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ me, profile, onMeUpdated, on
               onRun={startStyleReview}
             />
           </div>
-        ) : (
+        ) : activeTab === "guide" ? (
           <div
             key="guide"
             style={styles.tabPanelAnimated}
@@ -300,7 +301,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ me, profile, onMeUpdated, on
               onMeUpdated={onMeUpdated}
             />
           </div>
-        )}
+        ) : null}
 
         <div
           role="separator"
@@ -513,6 +514,12 @@ const styles: Record<string, React.CSSProperties> = {
     minHeight: 0,
     display: "flex",
     flexDirection: "column",
+    overflow: "hidden",
+  },
+  /** Breathing room between the tab bar and tour content (dots) without large all-around padding */
+  tabPanelTour: {
+    paddingTop: "4px",
+    minWidth: 0,
     overflow: "hidden",
   },
   tabPanelAnimated: {

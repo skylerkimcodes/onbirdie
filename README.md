@@ -9,7 +9,7 @@
 - **Account and team context** — Email/password auth with JWTs stored securely in VS Code. Employers have a legacy join code plus optional **cohort codes** (e.g. frontend vs backend). An **admin portal** (separate sign-in) lets teams edit style guides, role lists, and cohort configuration.
 - **Personalized assistance** — Profile includes role, resume text, LinkedIn, and skills. Chat uses that context plus employer tasks and the **effective style guide** so answers stay relevant to the person and the team.
 - **Codebase tour** — AI-generated steps tailored to the user’s role, with file open and line highlighting. The tour is cached for the session so switching sidebar tabs does not repeatedly regenerate it; **New tour** forces a refresh.
-- **Onboarding plan** — Breaks work into steps (“birdies”) with progress you can update from the sidebar.
+- **Onboarding plan** — Breaks work into steps with progress you can update from the sidebar.
 - **Style review** — Review staged changes (and optional live diagnostics while editing) against the company style guide, with citations from the guide text. Optional **post-commit** review after each git commit.
 
 ---
