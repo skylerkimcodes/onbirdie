@@ -62,19 +62,23 @@ export async function setAccessToken(
 }
 
 export async function fetchMe(secrets: vscode.SecretStorage): Promise<MeResponse | null> {
-  const token = await getAccessToken(secrets);
-  if (!token) {
+  try {
+    const token = await getAccessToken(secrets);
+    if (!token) {
+      return null;
+    }
+    const res = await apiRequest("GET", "/api/v1/me", { token });
+    if (res.status === 401) {
+      await setAccessToken(secrets, undefined);
+      return null;
+    }
+    if (!res.ok) {
+      return null;
+    }
+    return (await res.json()) as MeResponse;
+  } catch {
     return null;
   }
-  const res = await apiRequest("GET", "/api/v1/me", { token });
-  if (res.status === 401) {
-    await setAccessToken(secrets, undefined);
-    return null;
-  }
-  if (!res.ok) {
-    return null;
-  }
-  return (await res.json()) as MeResponse;
 }
 
 export async function loginWithCredentials(

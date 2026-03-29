@@ -1,26 +1,36 @@
 import { getApiBaseUrl } from "./config";
 
+const DEFAULT_TIMEOUT_MS = 25_000;
+
 /** Multipart upload (e.g. resume PDF). Do not set Content-Type; the boundary is set automatically. */
 export async function apiUploadFile(
   path: string,
   file: Uint8Array,
   fileName: string,
-  token: string
+  token: string,
+  timeoutMs: number = DEFAULT_TIMEOUT_MS * 2
 ): Promise<Response> {
   const base = getApiBaseUrl();
   const form = new FormData();
   form.append("file", new Blob([file]), fileName);
-  return fetch(`${base}${path}`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    body: form,
-  });
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(`${base}${path}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 export async function apiRequest(
   method: string,
   path: string,
-  options: { body?: unknown; token?: string } = {}
+  options: { body?: unknown; token?: string; timeoutMs?: number } = {}
 ): Promise<Response> {
   const base = getApiBaseUrl();
   const headers: Record<string, string> = {
@@ -32,9 +42,17 @@ export async function apiRequest(
   if (options.token) {
     headers.Authorization = `Bearer ${options.token}`;
   }
-  return fetch(`${base}${path}`, {
-    method,
-    headers,
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-  });
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(`${base}${path}`, {
+      method,
+      headers,
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(t);
+  }
 }
