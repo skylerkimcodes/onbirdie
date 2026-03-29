@@ -24,7 +24,7 @@ def _normalize_steps(raw: list[Any]) -> list[dict[str, Any]]:
             continue
         sid = str(item.get("id") or f"step-{i + 1}").strip() or f"step-{i + 1}"
         title = str(item.get("title") or "").strip()
-        detail = str(item.get("detail") or "").strip()
+        detail = str(item.get("detail") or item.get("description") or "").strip()
         guidance = str(item.get("guidance") or "").strip()
         diff_raw = item.get("difficulty", 3)
         try:

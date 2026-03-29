@@ -96,7 +96,7 @@ export const WorkspaceGuidePanel: React.FC<Props> = ({
         )}
 
         <section style={styles.sectionLast}>
-          <OnboardingPlanPanel me={me} onMeUpdated={onMeUpdated} embedded />
+          <OnboardingPlanPanel me={me} onMeUpdated={onMeUpdated} embedded={true} />
         </section>
       </div>
     </div>

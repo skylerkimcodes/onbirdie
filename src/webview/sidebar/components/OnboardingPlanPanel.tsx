@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import type { MeResponse } from "../../../lib/types";
+import type { MeResponse, PlanStepPublic } from "../../../lib/types";
 import { ConfettiBurst } from "./ConfettiBurst";
 import { OB_EASE } from "../motion";
 import { requestPlanGenerate, requestPlanStep } from "../vscodeBridge";
@@ -55,6 +55,54 @@ function truncateBody(s: string | undefined, max: number): string {
   return `${t.slice(0, max - 1)}…`;
 }
 
+/** Step body text: API uses `detail`; some payloads use `description` or `body`. */
+function stepDetailText(s: PlanStepPublic & { body?: string }): string {
+  return String(s.detail || s.description || s.body || "").trim();
+}
+
+/** Right-pointing chevron; rotates to “down” when `expanded` (single asset, no glyph swap). */
+function ExpandChevron({ expanded }: { expanded: boolean }) {
+  return (
+    <span style={expandChevronWrap}>
+      <svg
+        width="10"
+        height="10"
+        viewBox="0 0 10 10"
+        style={{
+          ...expandChevronSvg,
+          transform: expanded ? "rotate(90deg)" : "none",
+        }}
+        aria-hidden
+      >
+        <path
+          d="M3.25 1.75 L6.75 5 L3.25 8.25"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.35"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </span>
+  );
+}
+
+const expandChevronWrap: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "11px",
+  flexShrink: 0,
+};
+
+const expandChevronSvg: React.CSSProperties = {
+  display: "block",
+  color: "var(--vscode-descriptionForeground)",
+  opacity: 0.88,
+  transformOrigin: "50% 50%",
+  transition: `transform 0.2s ${OB_EASE}`,
+};
+
 interface RankInfo {
   label: string;
   emoji: string;
@@ -91,10 +139,17 @@ export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [confettiTick, setConfettiTick] = useState(0);
+  const [expandedStepId, setExpandedStepId] = useState<string | null>(null);
   const prevDoneRef = useRef<number | undefined>(undefined);
 
   const plan = me.onboarding_plan;
   const steps = plan?.steps ?? [];
+
+  const stepIdsKey = useMemo(() => steps.map((s) => s.id).join("\0"), [steps]);
+
+  useEffect(() => {
+    setExpandedStepId(null);
+  }, [stepIdsKey]);
 
   const progress = useMemo(() => {
     if (steps.length === 0) {
@@ -266,9 +321,19 @@ export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded
           <ul style={styles.stepList}>
             {plan.steps.map((s, i) => {
               const isNext = !s.done && s.id === nextStepId;
-              const detail = (s.detail ?? "").trim();
+              const detail = stepDetailText(s);
               const guide = (s.guidance ?? "").trim();
-              const questTip = [detail, guide].filter(Boolean).join("\n\n");
+              const titleText = (s.title ?? "").trim() || "Birdie";
+              const hasBody = !!(detail || guide);
+              const isExpanded = embedded && expandedStepId === s.id;
+
+              const cardBorderStyle =
+                embedded && isExpanded
+                  ? styles.questCardExpanded
+                  : isNext
+                    ? styles.questCardNext
+                    : undefined;
+
               return (
                 <li
                   key={s.id}
@@ -276,10 +341,15 @@ export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded
                     ...styles.questCard,
                     ...(embedded ? styles.questCardEmbedded : {}),
                     ...(s.done ? styles.questCardDone : {}),
-                    ...(isNext ? styles.questCardNext : {}),
+                    ...(cardBorderStyle ?? {}),
                   }}
                 >
-                  <div style={styles.questHead}>
+                  <div
+                    style={{
+                      ...styles.questHead,
+                      ...(embedded ? styles.questHeadEmbedded : {}),
+                    }}
+                  >
                     <button
                       type="button"
                       style={{
@@ -287,36 +357,96 @@ export const OnboardingPlanPanel: React.FC<Props> = ({ me, onMeUpdated, embedded
                         ...(s.done ? styles.questIndexBtnDone : {}),
                       }}
                       disabled={busy}
-                      onClick={() => void toggleStep(s.id, !s.done)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void toggleStep(s.id, !s.done);
+                      }}
                       aria-pressed={s.done}
                       aria-label={
                         s.done
-                          ? `Mark incomplete birdie ${i + 1}: ${(s.title ?? "").trim() || "Birdie"}`
-                          : `Mark complete birdie ${i + 1}: ${(s.title ?? "").trim() || "Birdie"}`
+                          ? `Mark incomplete birdie ${i + 1}: ${titleText}`
+                          : `Mark complete birdie ${i + 1}: ${titleText}`
                       }
-                      title={s.done ? "Click to mark incomplete" : "Click to mark complete"}
+                      title={s.done ? "Mark incomplete" : "Mark complete"}
                     >
                       {s.done ? "✓" : i + 1}
                     </button>
-                    <div style={styles.stepTitleRow}>
-                      <span
-                        style={{ ...styles.stepTitle, ...(s.done ? styles.stepTitleDone : {}) }}
-                        title={embedded && questTip ? questTip : undefined}
-                      >
-                        {(s.title ?? "").trim() || "Birdie"}
-                      </span>
-                    </div>
-                    {!s.done ? (
-                      <span style={styles.xpChip} aria-hidden title={`Worth ${progress.stepPoints[i]} pts`}>
-                        +{progress.stepPoints[i] ?? 0}
-                      </span>
+                    {embedded ? (
+                      hasBody ? (
+                        <button
+                          type="button"
+                          style={styles.embeddedRowExpand}
+                          onClick={() => setExpandedStepId((id) => (id === s.id ? null : s.id))}
+                          aria-expanded={isExpanded}
+                          aria-label={
+                            isExpanded
+                              ? `Collapse details for ${titleText}`
+                              : `Show description for ${titleText}`
+                          }
+                        >
+                          <ExpandChevron expanded={isExpanded} />
+                          <span style={{ ...styles.stepTitle, ...(s.done ? styles.stepTitleDone : {}) }}>
+                            {titleText}
+                          </span>
+                          {!s.done ? (
+                            <span style={styles.xpChip} aria-hidden>
+                              +{progress.stepPoints[i] ?? 0}
+                            </span>
+                          ) : (
+                            <span style={styles.xpSlot} aria-hidden />
+                          )}
+                        </button>
+                      ) : (
+                        <div style={styles.embeddedRowStatic}>
+                          <span style={styles.embeddedRowLead} aria-hidden />
+                          <span style={{ ...styles.stepTitle, ...(s.done ? styles.stepTitleDone : {}) }}>
+                            {titleText}
+                          </span>
+                          {!s.done ? (
+                            <span style={styles.xpChip} aria-hidden>
+                              +{progress.stepPoints[i] ?? 0}
+                            </span>
+                          ) : (
+                            <span style={styles.xpSlot} aria-hidden />
+                          )}
+                        </div>
+                      )
                     ) : (
-                      <span style={styles.xpSlot} aria-hidden />
+                      <>
+                        <div style={styles.stepTitleRow}>
+                          <span style={{ ...styles.stepTitle, ...(s.done ? styles.stepTitleDone : {}) }}>
+                            {titleText}
+                          </span>
+                        </div>
+                        {!s.done ? (
+                          <span style={styles.xpChip} aria-hidden title={`Worth ${progress.stepPoints[i]} pts`}>
+                            +{progress.stepPoints[i] ?? 0}
+                          </span>
+                        ) : (
+                          <span style={styles.xpSlot} aria-hidden />
+                        )}
+                      </>
                     )}
                   </div>
+                  {embedded && isExpanded && hasBody ? (
+                    <div style={styles.embeddedExpand}>
+                      {detail ? (
+                        <>
+                          <div style={styles.embeddedDescLabel}>Description</div>
+                          <p style={styles.stepDetailEmbedded}>{detail}</p>
+                        </>
+                      ) : null}
+                      {guide ? (
+                        <p style={styles.guidanceEmbedded}>
+                          <span style={styles.guidanceMark}>Tip · </span>
+                          {guide}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {!embedded && detail ? (
                     <p style={styles.stepDetail} title={detail}>
-                      {truncateBody(s.detail, 220)}
+                      {truncateBody(detail, 220)}
                     </p>
                   ) : null}
                   {!embedded && guide ? (
@@ -546,6 +676,76 @@ const styles: Record<string, React.CSSProperties> = {
   questCardNext: {
     borderColor: "var(--vscode-focusBorder, var(--vscode-textLink-foreground))",
     boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.06)",
+  },
+  questCardExpanded: {
+    background: "var(--vscode-editorWidget-background, rgba(255,255,255,0.04))",
+    borderColor: "var(--vscode-focusBorder, var(--vscode-textLink-foreground))",
+    boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.06)",
+  },
+  embeddedRowExpand: {
+    border: "none",
+    background: "transparent",
+    padding: 0,
+    margin: 0,
+    cursor: "pointer",
+    textAlign: "left",
+    fontFamily: "inherit",
+    fontSize: "11px",
+    fontWeight: 600,
+    color: "var(--vscode-foreground)",
+    display: "grid",
+    gridTemplateColumns: "11px 1fr auto",
+    alignItems: "start",
+    gap: "4px 6px",
+    minWidth: 0,
+    width: "100%",
+  },
+  questHeadEmbedded: {
+    gridTemplateColumns: "22px 1fr",
+  },
+  embeddedRowStatic: {
+    display: "grid",
+    gridTemplateColumns: "11px 1fr auto",
+    alignItems: "start",
+    gap: "4px 6px",
+    minWidth: 0,
+  },
+  embeddedRowLead: {
+    display: "block",
+    width: "11px",
+    flexShrink: 0,
+  },
+  embeddedDescLabel: {
+    fontSize: "9px",
+    fontWeight: 700,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    color: "var(--vscode-descriptionForeground)",
+    marginBottom: "4px",
+  },
+  embeddedExpand: {
+    marginTop: "8px",
+    paddingTop: "8px",
+    paddingLeft: "28px",
+    paddingRight: "0",
+    borderTop: "1px solid var(--vscode-widget-border, rgba(255,255,255,0.08))",
+    width: "100%",
+    boxSizing: "border-box",
+  },
+  stepDetailEmbedded: {
+    fontSize: "11px",
+    lineHeight: 1.5,
+    color: "var(--vscode-foreground)",
+    opacity: 0.92,
+    margin: "0 0 8px 0",
+    wordBreak: "break-word",
+  },
+  guidanceEmbedded: {
+    fontSize: "10px",
+    lineHeight: 1.45,
+    color: "var(--vscode-descriptionForeground)",
+    margin: 0,
+    wordBreak: "break-word",
   },
   nextUpBlock: {
     marginTop: "6px",

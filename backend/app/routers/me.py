@@ -54,7 +54,7 @@ def _onboarding_plan_public(user: dict) -> OnboardingPlanPublic | None:
             continue
         sid = str(s.get("id") or "").strip()
         title = str(s.get("title") or "").strip()
-        detail = str(s.get("detail") or "").strip()
+        detail = str(s.get("detail") or s.get("description") or "").strip()
         if not sid or not title or not detail:
             continue
         diff_raw = s.get("difficulty", 3)

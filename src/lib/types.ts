@@ -46,6 +46,8 @@ export interface PlanStepPublic {
   id: string;
   title: string;
   detail: string;
+  /** Legacy / LLM alias — prefer `detail`; UI and API normalize to `detail`. */
+  description?: string;
   guidance: string;
   done: boolean;
   /** 1–5 from the planner; weights how many of the 100 points this birdie is worth. */
